@@ -3,32 +3,52 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { AuthProvider } from "@/contexts/AuthContext";
 import Index from "./pages/Index";
 import SearchResults from "./pages/SearchResults";
 import TripDetails from "./pages/TripDetails";
 import Login from "./pages/Login";
 import Companies from "./pages/Companies";
+import CompanyRegister from "./pages/CompanyRegister";
+import Dashboard from "./pages/company/Dashboard";
+import Overview from "./pages/company/Overview";
+import Buses from "./pages/company/Buses";
+import RoutesPage from "./pages/company/Routes";
+import Trips from "./pages/company/Trips";
+import Bookings from "./pages/company/Bookings";
+import Settings from "./pages/company/Settings";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Index />} />
-          <Route path="/search" element={<SearchResults />} />
-          <Route path="/trip/:id" element={<TripDetails />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/companies" element={<Companies />} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </BrowserRouter>
-    </TooltipProvider>
+    <AuthProvider>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
+        <BrowserRouter>
+          <Routes>
+            <Route path="/" element={<Index />} />
+            <Route path="/search" element={<SearchResults />} />
+            <Route path="/trip/:id" element={<TripDetails />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/companies" element={<Companies />} />
+            <Route path="/company/register" element={<CompanyRegister />} />
+            <Route path="/company/login" element={<CompanyRegister />} />
+            <Route path="/company/dashboard" element={<Dashboard />}>
+              <Route index element={<Overview />} />
+              <Route path="buses" element={<Buses />} />
+              <Route path="routes" element={<RoutesPage />} />
+              <Route path="trips" element={<Trips />} />
+              <Route path="bookings" element={<Bookings />} />
+              <Route path="settings" element={<Settings />} />
+            </Route>
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </BrowserRouter>
+      </TooltipProvider>
+    </AuthProvider>
   </QueryClientProvider>
 );
 
