@@ -1,11 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
 import TripCard from '@/components/search/TripCard';
-import { generateTrips, formatDate } from '@/data/mockData';
-import { Trip } from '@/types';
-import { MapPin, ArrowRight, Calendar, Users, Filter, SortAsc } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { MapPin, ArrowRight, Calendar, Users, Filter, SortAsc, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -14,38 +14,77 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { format, parseISO, startOfDay, endOfDay } from 'date-fns';
 
 const SearchResults = () => {
   const [searchParams] = useSearchParams();
-  const [trips, setTrips] = useState<Trip[]>([]);
   const [sortBy, setSortBy] = useState('price');
-  const [isLoading, setIsLoading] = useState(true);
 
   const from = searchParams.get('from') || '';
   const to = searchParams.get('to') || '';
   const date = searchParams.get('date') || new Date().toISOString().split('T')[0];
   const passengers = searchParams.get('passengers') || '1';
 
-  useEffect(() => {
-    setIsLoading(true);
-    // Simulate API call
-    setTimeout(() => {
-      const results = generateTrips(from, to, date);
-      setTrips(results);
-      setIsLoading(false);
-    }, 800);
-  }, [from, to, date]);
+  const { data: trips = [], isLoading } = useQuery({
+    queryKey: ['search-trips', from, to, date],
+    queryFn: async () => {
+      // Build the query based on search params
+      let query = supabase
+        .from('trips')
+        .select(`
+          *,
+          route:routes(
+            *,
+            origin_city:cities!routes_origin_city_id_fkey(name, state),
+            destination_city:cities!routes_destination_city_id_fkey(name, state),
+            company:companies(name, logo_url, rating, total_trips, is_verified)
+          ),
+          bus:buses(bus_type, amenities, total_seats)
+        `)
+        .eq('status', 'scheduled')
+        .gt('available_seats', 0);
 
-  const sortedTrips = [...trips].sort((a, b) => {
+      // Filter by date range if provided
+      if (date) {
+        const searchDate = parseISO(date);
+        query = query
+          .gte('departure_time', startOfDay(searchDate).toISOString())
+          .lte('departure_time', endOfDay(searchDate).toISOString());
+      }
+
+      const { data, error } = await query.order('departure_time', { ascending: true });
+
+      if (error) throw error;
+
+      // Filter by origin/destination if specified
+      let filteredData = data || [];
+      
+      if (from) {
+        filteredData = filteredData.filter((trip: any) =>
+          trip.route?.origin_city?.name?.toLowerCase().includes(from.toLowerCase())
+        );
+      }
+      
+      if (to) {
+        filteredData = filteredData.filter((trip: any) =>
+          trip.route?.destination_city?.name?.toLowerCase().includes(to.toLowerCase())
+        );
+      }
+
+      return filteredData;
+    },
+  });
+
+  const sortedTrips = [...trips].sort((a: any, b: any) => {
     switch (sortBy) {
       case 'price':
         return a.price - b.price;
       case 'departure':
-        return new Date(a.departureTime).getTime() - new Date(b.departureTime).getTime();
+        return new Date(a.departure_time).getTime() - new Date(b.departure_time).getTime();
       case 'duration':
-        return a.route.durationHours - b.route.durationHours;
+        return (a.route?.duration_hours || 0) - (b.route?.duration_hours || 0);
       case 'rating':
-        return b.company.rating - a.company.rating;
+        return (b.route?.company?.rating || 0) - (a.route?.company?.rating || 0);
       default:
         return 0;
     }
@@ -63,10 +102,10 @@ const SearchResults = () => {
               {/* Route */}
               <div className="flex items-center gap-2 text-lg font-semibold">
                 <MapPin className="h-5 w-5 text-primary" />
-                <span>{from}</span>
+                <span>{from || 'Any'}</span>
                 <ArrowRight className="h-4 w-4 text-muted-foreground" />
                 <MapPin className="h-5 w-5 text-accent" />
-                <span>{to}</span>
+                <span>{to || 'Any'}</span>
               </div>
 
               <div className="h-6 w-px bg-border hidden md:block" />
@@ -74,7 +113,7 @@ const SearchResults = () => {
               {/* Date */}
               <div className="flex items-center gap-2 text-muted-foreground">
                 <Calendar className="h-4 w-4" />
-                <span>{formatDate(date)}</span>
+                <span>{format(parseISO(date), 'PPP')}</span>
               </div>
 
               <div className="h-6 w-px bg-border hidden md:block" />
@@ -125,23 +164,12 @@ const SearchResults = () => {
 
           {/* Trip List */}
           {isLoading ? (
-            <div className="space-y-4">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="bg-card rounded-2xl border border-border p-6 animate-pulse">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-muted rounded-xl" />
-                    <div className="flex-1 space-y-2">
-                      <div className="h-4 bg-muted rounded w-1/4" />
-                      <div className="h-3 bg-muted rounded w-1/3" />
-                    </div>
-                    <div className="h-10 bg-muted rounded w-24" />
-                  </div>
-                </div>
-              ))}
+            <div className="flex items-center justify-center py-16">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
           ) : trips.length > 0 ? (
             <div className="space-y-4">
-              {sortedTrips.map((trip) => (
+              {sortedTrips.map((trip: any) => (
                 <TripCard key={trip.id} trip={trip} />
               ))}
             </div>

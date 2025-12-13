@@ -1,19 +1,32 @@
-import { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
 import { Button } from '@/components/ui/button';
-import { generateTrips, formatPrice, formatTime, formatDate } from '@/data/mockData';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
+import { useBookTrip } from '@/hooks/useBookTrip';
 import { Seat } from '@/types';
-import { ArrowLeft, MapPin, Clock, Users, CheckCircle, Star, Info } from 'lucide-react';
+import { ArrowLeft, MapPin, Clock, Users, CheckCircle, Star, Info, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { format } from 'date-fns';
 
-// Generate mock seats
-const generateSeats = (totalSeats: number): Seat[] => {
+// Generate mock seats based on available seats
+const generateSeats = (totalSeats: number, availableSeats: number): Seat[] => {
   const seats: Seat[] = [];
   const cols = 4;
   const rows = Math.ceil(totalSeats / cols);
+  const bookedCount = totalSeats - availableSeats;
+  const bookedIndices = new Set<number>();
+  
+  // Randomly mark some seats as booked
+  while (bookedIndices.size < bookedCount) {
+    bookedIndices.add(Math.floor(Math.random() * totalSeats));
+  }
 
   for (let row = 0; row < rows; row++) {
     for (let col = 0; col < cols; col++) {
@@ -24,7 +37,7 @@ const generateSeats = (totalSeats: number): Seat[] => {
           number: seatNum.toString().padStart(2, '0'),
           row,
           column: col,
-          isAvailable: Math.random() > 0.3,
+          isAvailable: !bookedIndices.has(seatNum - 1),
           isSelected: false,
           type: row < 2 ? 'premium' : 'standard',
         });
@@ -36,12 +49,74 @@ const generateSeats = (totalSeats: number): Seat[] => {
 
 const TripDetails = () => {
   const { id } = useParams();
-  const [seats, setSeats] = useState<Seat[]>(() => generateSeats(32));
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const bookTrip = useBookTrip();
+  
+  const [seats, setSeats] = useState<Seat[]>([]);
   const [selectedSeats, setSelectedSeats] = useState<string[]>([]);
+  const [passengerInfo, setPassengerInfo] = useState({
+    name: '',
+    email: '',
+    phone: '',
+  });
 
-  // Mock trip data - in real app, fetch based on id
-  const trips = generateTrips('Lagos', 'Abuja', new Date().toISOString().split('T')[0]);
-  const trip = trips[0];
+  const { data: trip, isLoading, error } = useQuery({
+    queryKey: ['trip', id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('trips')
+        .select(`
+          *,
+          route:routes(
+            *,
+            origin_city:cities!routes_origin_city_id_fkey(name, state),
+            destination_city:cities!routes_destination_city_id_fkey(name, state)
+          ),
+          bus:buses(
+            *,
+            company:companies(name, logo_url, rating, total_trips, is_verified)
+          )
+        `)
+        .eq('id', id)
+        .maybeSingle();
+
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!id,
+  });
+
+  useEffect(() => {
+    if (trip?.bus?.total_seats) {
+      setSeats(generateSeats(trip.bus.total_seats, trip.available_seats));
+    }
+  }, [trip]);
+
+  useEffect(() => {
+    if (user) {
+      // Pre-fill with user data if available
+      supabase
+        .from('profiles')
+        .select('full_name, phone')
+        .eq('id', user.id)
+        .maybeSingle()
+        .then(({ data }) => {
+          if (data) {
+            setPassengerInfo({
+              name: data.full_name || '',
+              email: user.email || '',
+              phone: data.phone || '',
+            });
+          } else {
+            setPassengerInfo(prev => ({
+              ...prev,
+              email: user.email || '',
+            }));
+          }
+        });
+    }
+  }, [user]);
 
   const handleSeatClick = (seatId: string) => {
     const seat = seats.find(s => s.id === seatId);
@@ -60,15 +135,74 @@ const TripDetails = () => {
     );
   };
 
-  const totalPrice = selectedSeats.length * trip.price;
+  const totalPrice = selectedSeats.length * (trip?.price || 0);
 
-  const handleProceed = () => {
+  const handleProceed = async () => {
+    if (!user) {
+      toast.error('Please sign in to book a trip');
+      navigate('/login');
+      return;
+    }
+
     if (selectedSeats.length === 0) {
       toast.error('Please select at least one seat');
       return;
     }
-    toast.success(`Proceeding with ${selectedSeats.length} seat(s). Total: ${formatPrice(totalPrice)}`);
+
+    if (!passengerInfo.name || !passengerInfo.email || !passengerInfo.phone) {
+      toast.error('Please fill in all passenger details');
+      return;
+    }
+
+    try {
+      const seatNumbers = seats
+        .filter(s => selectedSeats.includes(s.id))
+        .map(s => s.number);
+
+      await bookTrip.mutateAsync({
+        tripId: id!,
+        seats: seatNumbers,
+        totalAmount: totalPrice,
+        passengerName: passengerInfo.name,
+        passengerEmail: passengerInfo.email,
+        passengerPhone: passengerInfo.phone,
+      });
+
+      toast.success('Booking confirmed! Check your bookings for details.');
+      navigate('/my-bookings');
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to complete booking');
+    }
   };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex flex-col bg-muted/30">
+        <Header />
+        <main className="flex-1 flex items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
+  if (error || !trip) {
+    return (
+      <div className="min-h-screen flex flex-col bg-muted/30">
+        <Header />
+        <main className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <h2 className="text-xl font-semibold mb-2">Trip not found</h2>
+            <Link to="/search">
+              <Button>Back to Search</Button>
+            </Link>
+          </div>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-muted/30">
@@ -92,24 +226,26 @@ const TripDetails = () => {
               <div className="bg-card rounded-2xl border border-border p-6">
                 <div className="flex items-start justify-between mb-6">
                   <div className="flex items-center gap-4">
-                    <div className="text-4xl">{trip.company.logo}</div>
+                    <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center text-2xl">
+                      {trip.bus?.company?.logo_url || '🚌'}
+                    </div>
                     <div>
                       <div className="flex items-center gap-2">
-                        <h2 className="font-display text-xl font-bold">{trip.company.name}</h2>
-                        {trip.company.isVerified && (
+                        <h2 className="font-display text-xl font-bold">{trip.bus?.company?.name}</h2>
+                        {trip.bus?.company?.is_verified && (
                           <CheckCircle className="h-5 w-5 text-primary fill-primary/20" />
                         )}
                       </div>
                       <div className="flex items-center gap-1 text-muted-foreground">
                         <Star className="h-4 w-4 text-warning fill-warning" />
-                        <span>{trip.company.rating}</span>
+                        <span>{trip.bus?.company?.rating || 0}</span>
                         <span>•</span>
-                        <span>{trip.company.totalTrips.toLocaleString()} trips</span>
+                        <span>{(trip.bus?.company?.total_trips || 0).toLocaleString()} trips</span>
                       </div>
                     </div>
                   </div>
                   <span className="px-3 py-1 rounded-full bg-primary/10 text-primary text-sm font-medium capitalize">
-                    {trip.bus.busType}
+                    {trip.bus?.bus_type}
                   </span>
                 </div>
 
@@ -118,24 +254,24 @@ const TripDetails = () => {
                     <MapPin className="h-5 w-5 text-primary" />
                     <div>
                       <p className="text-sm text-muted-foreground">From</p>
-                      <p className="font-semibold">{trip.route.origin.name}</p>
-                      <p className="text-sm text-muted-foreground">{formatTime(trip.departureTime)}</p>
+                      <p className="font-semibold">{trip.route?.origin_city?.name}</p>
+                      <p className="text-sm text-muted-foreground">{format(new Date(trip.departure_time), 'p')}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
                     <Clock className="h-5 w-5 text-muted-foreground" />
                     <div>
                       <p className="text-sm text-muted-foreground">Duration</p>
-                      <p className="font-semibold">{trip.route.durationHours} hours</p>
-                      <p className="text-sm text-muted-foreground">{formatDate(trip.departureTime)}</p>
+                      <p className="font-semibold">{trip.route?.duration_hours} hours</p>
+                      <p className="text-sm text-muted-foreground">{format(new Date(trip.departure_time), 'PPP')}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
                     <MapPin className="h-5 w-5 text-accent" />
                     <div>
                       <p className="text-sm text-muted-foreground">To</p>
-                      <p className="font-semibold">{trip.route.destination.name}</p>
-                      <p className="text-sm text-muted-foreground">{formatTime(trip.arrivalTime)}</p>
+                      <p className="font-semibold">{trip.route?.destination_city?.name}</p>
+                      <p className="text-sm text-muted-foreground">{format(new Date(trip.arrival_time), 'p')}</p>
                     </div>
                   </div>
                 </div>
@@ -179,16 +315,14 @@ const TripDetails = () => {
                     {/* Seats Grid */}
                     <div className="grid grid-cols-5 gap-2">
                       {seats.map((seat, index) => {
-                        // Add aisle gap after column 2
                         const isAfterAisle = seat.column === 2;
 
                         return (
-                          <>
+                          <div key={seat.id} className="contents">
                             {isAfterAisle && (
                               <div key={`aisle-${index}`} className="w-4" />
                             )}
                             <button
-                              key={seat.id}
                               onClick={() => handleSeatClick(seat.id)}
                               disabled={!seat.isAvailable}
                               className={cn(
@@ -204,13 +338,51 @@ const TripDetails = () => {
                             >
                               {seat.number}
                             </button>
-                          </>
+                          </div>
                         );
                       })}
                     </div>
                   </div>
                 </div>
               </div>
+
+              {/* Passenger Details */}
+              {user && selectedSeats.length > 0 && (
+                <div className="bg-card rounded-2xl border border-border p-6">
+                  <h3 className="font-display text-lg font-semibold mb-4">Passenger Details</h3>
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="name">Full Name</Label>
+                      <Input
+                        id="name"
+                        value={passengerInfo.name}
+                        onChange={(e) => setPassengerInfo({ ...passengerInfo, name: e.target.value })}
+                        placeholder="Enter your full name"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="email">Email</Label>
+                      <Input
+                        id="email"
+                        type="email"
+                        value={passengerInfo.email}
+                        onChange={(e) => setPassengerInfo({ ...passengerInfo, email: e.target.value })}
+                        placeholder="Enter your email"
+                      />
+                    </div>
+                    <div className="space-y-2 md:col-span-2">
+                      <Label htmlFor="phone">Phone Number</Label>
+                      <Input
+                        id="phone"
+                        type="tel"
+                        value={passengerInfo.phone}
+                        onChange={(e) => setPassengerInfo({ ...passengerInfo, phone: e.target.value })}
+                        placeholder="Enter your phone number"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Booking Summary */}
@@ -221,15 +393,15 @@ const TripDetails = () => {
                 <div className="space-y-3 mb-6">
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Route</span>
-                    <span className="font-medium">{trip.route.origin.name} → {trip.route.destination.name}</span>
+                    <span className="font-medium">{trip.route?.origin_city?.name} → {trip.route?.destination_city?.name}</span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Date</span>
-                    <span className="font-medium">{formatDate(trip.departureTime)}</span>
+                    <span className="font-medium">{format(new Date(trip.departure_time), 'PPP')}</span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Time</span>
-                    <span className="font-medium">{formatTime(trip.departureTime)}</span>
+                    <span className="font-medium">{format(new Date(trip.departure_time), 'p')}</span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Seat(s)</span>
@@ -244,7 +416,7 @@ const TripDetails = () => {
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Price per seat</span>
-                    <span className="font-medium">{formatPrice(trip.price)}</span>
+                    <span className="font-medium">₦{trip.price.toLocaleString()}</span>
                   </div>
                 </div>
 
@@ -252,7 +424,7 @@ const TripDetails = () => {
                   <div className="flex justify-between items-center">
                     <span className="font-semibold">Total</span>
                     <span className="font-display text-2xl font-bold text-primary">
-                      {formatPrice(totalPrice)}
+                      ₦{totalPrice.toLocaleString()}
                     </span>
                   </div>
                 </div>
@@ -261,9 +433,18 @@ const TripDetails = () => {
                   size="lg"
                   className="w-full"
                   onClick={handleProceed}
-                  disabled={selectedSeats.length === 0}
+                  disabled={selectedSeats.length === 0 || bookTrip.isPending}
                 >
-                  Proceed to Payment
+                  {bookTrip.isPending ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Processing...
+                    </>
+                  ) : user ? (
+                    'Confirm Booking'
+                  ) : (
+                    'Sign In to Book'
+                  )}
                 </Button>
 
                 <div className="flex items-start gap-2 mt-4 p-3 bg-muted rounded-lg">
