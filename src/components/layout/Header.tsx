@@ -1,12 +1,22 @@
 import { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
-import { Bus, Menu, X, User, Building2 } from 'lucide-react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Bus, Menu, X, User, Building2, Ticket, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/contexts/AuthContext';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 const Header = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
+  const { user, signOut } = useAuth();
 
   const navLinks = [
     { href: '/', label: 'Home' },
@@ -16,6 +26,11 @@ const Header = () => {
   ];
 
   const isActive = (path: string) => location.pathname === path;
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate('/');
+  };
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
@@ -57,12 +72,37 @@ const Header = () => {
               For Companies
             </Button>
           </Link>
-          <Link to="/login">
-            <Button variant="outline-primary" size="sm" className="gap-2">
-              <User className="h-4 w-4" />
-              Sign In
-            </Button>
-          </Link>
+          
+          {user ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline-primary" size="sm" className="gap-2">
+                  <User className="h-4 w-4" />
+                  My Account
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem asChild>
+                  <Link to="/my-bookings" className="flex items-center gap-2">
+                    <Ticket className="h-4 w-4" />
+                    My Bookings
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleSignOut} className="text-destructive">
+                  <LogOut className="h-4 w-4 mr-2" />
+                  Sign Out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <Link to="/login">
+              <Button variant="outline-primary" size="sm" className="gap-2">
+                <User className="h-4 w-4" />
+                Sign In
+              </Button>
+            </Link>
+          )}
         </div>
 
         {/* Mobile Menu Button */}
@@ -97,19 +137,37 @@ const Header = () => {
                 {link.label}
               </Link>
             ))}
+            
+            {user && (
+              <Link
+                to="/my-bookings"
+                onClick={() => setIsMobileMenuOpen(false)}
+                className="px-4 py-3 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-accent"
+              >
+                My Bookings
+              </Link>
+            )}
+            
             <div className="flex gap-2 mt-4 pt-4 border-t border-border">
-              <Link to="/company/login" className="flex-1">
+              <Link to="/company/login" className="flex-1" onClick={() => setIsMobileMenuOpen(false)}>
                 <Button variant="secondary" className="w-full gap-2">
                   <Building2 className="h-4 w-4" />
                   Companies
                 </Button>
               </Link>
-              <Link to="/login" className="flex-1">
-                <Button className="w-full gap-2">
-                  <User className="h-4 w-4" />
-                  Sign In
+              {user ? (
+                <Button onClick={handleSignOut} variant="destructive" className="flex-1 gap-2">
+                  <LogOut className="h-4 w-4" />
+                  Sign Out
                 </Button>
-              </Link>
+              ) : (
+                <Link to="/login" className="flex-1" onClick={() => setIsMobileMenuOpen(false)}>
+                  <Button className="w-full gap-2">
+                    <User className="h-4 w-4" />
+                    Sign In
+                  </Button>
+                </Link>
+              )}
             </div>
           </nav>
         </div>
