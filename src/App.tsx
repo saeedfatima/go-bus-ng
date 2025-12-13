@@ -18,6 +18,8 @@ import RoutesPage from "./pages/company/Routes";
 import Trips from "./pages/company/Trips";
 import Bookings from "./pages/company/Bookings";
 import Settings from "./pages/company/Settings";
+import AdminDashboard from "./pages/admin/Dashboard";
+import AdminCompanies from "./pages/admin/Companies";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -45,6 +47,10 @@ const App = () => (
               <Route path="trips" element={<Trips />} />
               <Route path="bookings" element={<Bookings />} />
               <Route path="settings" element={<Settings />} />
+            </Route>
+            <Route path="/admin" element={<AdminDashboard />}>
+              <Route index element={<AdminCompanies />} />
+              <Route path="companies" element={<AdminCompanies />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
