@@ -1,5 +1,8 @@
 import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { useRef, useState } from 'react';
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
 import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
 import { Button } from '@/components/ui/button';
@@ -7,10 +10,40 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { CheckCircle, MapPin, Clock, Users, Download, Calendar, Loader2 } from 'lucide-react';
 import { format, differenceInHours, differenceInMinutes } from 'date-fns';
+import ETicket from '@/components/booking/ETicket';
 
 const BookingConfirmation = () => {
   const { id } = useParams();
   const { user } = useAuth();
+  const ticketRef = useRef<HTMLDivElement>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
+
+  const downloadTicket = async () => {
+    if (!ticketRef.current || !booking) return;
+    
+    setIsDownloading(true);
+    try {
+      const canvas = await html2canvas(ticketRef.current, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#ffffff',
+      });
+      
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({
+        orientation: 'landscape',
+        unit: 'px',
+        format: [canvas.width, canvas.height],
+      });
+      
+      pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
+      pdf.save(`NigeriaBus-Ticket-${booking.ticket_code}.pdf`);
+    } catch (error) {
+      console.error('Failed to download ticket:', error);
+    } finally {
+      setIsDownloading(false);
+    }
+  };
 
   const { data: booking, isLoading, error } = useQuery({
     queryKey: ['booking-confirmation', id],
@@ -203,11 +236,25 @@ const BookingConfirmation = () => {
             </div>
           </div>
 
+          {/* Hidden E-Ticket for PDF generation */}
+          <div className="fixed left-[-9999px] top-0">
+            <ETicket ref={ticketRef} booking={booking} />
+          </div>
+
           {/* Actions */}
           <div className="flex flex-col sm:flex-row gap-3">
-            <Button variant="outline" className="flex-1" disabled>
-              <Download className="h-4 w-4 mr-2" />
-              Download E-Ticket (Coming Soon)
+            <Button 
+              variant="outline" 
+              className="flex-1" 
+              onClick={downloadTicket}
+              disabled={isDownloading || booking.status !== 'confirmed'}
+            >
+              {isDownloading ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4 mr-2" />
+              )}
+              {isDownloading ? 'Generating...' : 'Download E-Ticket'}
             </Button>
             <Link to="/my-bookings" className="flex-1">
               <Button className="w-full">View All Bookings</Button>
