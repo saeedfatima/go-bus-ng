@@ -14,13 +14,58 @@ export type Database = {
   }
   public: {
     Tables: {
+      booking_passengers: {
+        Row: {
+          booking_id: string
+          created_at: string
+          email: string | null
+          full_name: string
+          id: string
+          nin: string | null
+          phone: string
+          seat_number: string
+        }
+        Insert: {
+          booking_id: string
+          created_at?: string
+          email?: string | null
+          full_name: string
+          id?: string
+          nin?: string | null
+          phone: string
+          seat_number: string
+        }
+        Update: {
+          booking_id?: string
+          created_at?: string
+          email?: string | null
+          full_name?: string
+          id?: string
+          nin?: string | null
+          phone?: string
+          seat_number?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "booking_passengers_booking_id_fkey"
+            columns: ["booking_id"]
+            isOneToOne: false
+            referencedRelation: "bookings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       bookings: {
         Row: {
+          cancellation_reason: string | null
+          cancelled_at: string | null
           created_at: string
+          hold_expires_at: string | null
           id: string
           passenger_email: string
           passenger_name: string
           passenger_phone: string
+          payment_completed_at: string | null
           seats: string[]
           status: Database["public"]["Enums"]["booking_status"]
           ticket_code: string
@@ -30,11 +75,15 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          cancellation_reason?: string | null
+          cancelled_at?: string | null
           created_at?: string
+          hold_expires_at?: string | null
           id?: string
           passenger_email: string
           passenger_name: string
           passenger_phone: string
+          payment_completed_at?: string | null
           seats: string[]
           status?: Database["public"]["Enums"]["booking_status"]
           ticket_code: string
@@ -44,11 +93,15 @@ export type Database = {
           user_id: string
         }
         Update: {
+          cancellation_reason?: string | null
+          cancelled_at?: string | null
           created_at?: string
+          hold_expires_at?: string | null
           id?: string
           passenger_email?: string
           passenger_name?: string
           passenger_phone?: string
+          payment_completed_at?: string | null
           seats?: string[]
           status?: Database["public"]["Enums"]["booking_status"]
           ticket_code?: string
@@ -347,7 +400,7 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "company_admin" | "passenger"
-      booking_status: "pending" | "confirmed" | "cancelled"
+      booking_status: "pending" | "confirmed" | "cancelled" | "expired"
       bus_type: "standard" | "luxury" | "executive"
       trip_status:
         | "scheduled"
@@ -483,7 +536,7 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "company_admin", "passenger"],
-      booking_status: ["pending", "confirmed", "cancelled"],
+      booking_status: ["pending", "confirmed", "cancelled", "expired"],
       bus_type: ["standard", "luxury", "executive"],
       trip_status: [
         "scheduled",
