@@ -4,16 +4,24 @@ import { useQuery } from '@tanstack/react-query';
 import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { useBookTrip } from '@/hooks/useBookTrip';
+import { useMultiPassengerBooking } from '@/hooks/useMultiPassengerBooking';
+import PassengerForm from '@/components/booking/PassengerForm';
+import BookingSummary from '@/components/booking/BookingSummary';
 import { Seat } from '@/types';
 import { ArrowLeft, MapPin, Clock, Users, CheckCircle, Star, Info, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+
+interface PassengerFormData {
+  fullName: string;
+  phone: string;
+  email: string;
+  nin: string;
+  seatNumber: string;
+}
 
 // Generate mock seats based on available seats
 const generateSeats = (totalSeats: number, availableSeats: number): Seat[] => {
@@ -51,15 +59,11 @@ const TripDetails = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const bookTrip = useBookTrip();
+  const bookTrip = useMultiPassengerBooking();
   
   const [seats, setSeats] = useState<Seat[]>([]);
   const [selectedSeats, setSelectedSeats] = useState<string[]>([]);
-  const [passengerInfo, setPassengerInfo] = useState({
-    name: '',
-    email: '',
-    phone: '',
-  });
+  const [passengers, setPassengers] = useState<PassengerFormData[]>([]);
 
   const { data: trip, isLoading, error } = useQuery({
     queryKey: ['trip', id],
@@ -93,9 +97,43 @@ const TripDetails = () => {
     }
   }, [trip]);
 
+  // Sync passengers with selected seats
   useEffect(() => {
-    if (user) {
-      // Pre-fill with user data if available
+    const seatNumbers = seats
+      .filter(s => selectedSeats.includes(s.id))
+      .map(s => s.number);
+
+    setPassengers(prev => {
+      const newPassengers = seatNumbers.map((seatNum, idx) => {
+        const existing = prev.find(p => p.seatNumber === seatNum);
+        if (existing) return existing;
+        
+        // Pre-fill first passenger with user data
+        if (idx === 0 && user) {
+          return {
+            fullName: '',
+            phone: '',
+            email: user.email || '',
+            nin: '',
+            seatNumber: seatNum,
+          };
+        }
+        
+        return {
+          fullName: '',
+          phone: '',
+          email: '',
+          nin: '',
+          seatNumber: seatNum,
+        };
+      });
+      return newPassengers;
+    });
+  }, [selectedSeats, seats, user]);
+
+  // Pre-fill first passenger with profile data
+  useEffect(() => {
+    if (user && passengers.length > 0) {
       supabase
         .from('profiles')
         .select('full_name, phone')
@@ -103,20 +141,21 @@ const TripDetails = () => {
         .maybeSingle()
         .then(({ data }) => {
           if (data) {
-            setPassengerInfo({
-              name: data.full_name || '',
-              email: user.email || '',
-              phone: data.phone || '',
+            setPassengers(prev => {
+              if (prev.length === 0) return prev;
+              const updated = [...prev];
+              if (!updated[0].fullName && data.full_name) {
+                updated[0] = { ...updated[0], fullName: data.full_name };
+              }
+              if (!updated[0].phone && data.phone) {
+                updated[0] = { ...updated[0], phone: data.phone };
+              }
+              return updated;
             });
-          } else {
-            setPassengerInfo(prev => ({
-              ...prev,
-              email: user.email || '',
-            }));
           }
         });
     }
-  }, [user]);
+  }, [user, passengers.length]);
 
   const handleSeatClick = (seatId: string) => {
     const seat = seats.find(s => s.id === seatId);
@@ -135,11 +174,34 @@ const TripDetails = () => {
     );
   };
 
+  const handlePassengerChange = (index: number, field: keyof PassengerFormData, value: string) => {
+    setPassengers(prev => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], [field]: value };
+      return updated;
+    });
+  };
+
+  const handleRemoveSeat = (index: number) => {
+    const passenger = passengers[index];
+    const seatId = seats.find(s => s.number === passenger.seatNumber)?.id;
+    if (seatId) {
+      handleSeatClick(seatId);
+    }
+  };
+
   const totalPrice = selectedSeats.length * (trip?.price || 0);
+  const seatNumbers = seats.filter(s => selectedSeats.includes(s.id)).map(s => s.number);
 
   const handleProceed = async () => {
     if (!user) {
-      toast.error('Please sign in to book a trip');
+      // Store booking intent and redirect to login
+      sessionStorage.setItem('bookingIntent', JSON.stringify({
+        tripId: id,
+        selectedSeats,
+        returnUrl: `/trip/${id}`,
+      }));
+      toast.info('Please sign in to complete your booking');
       navigate('/login');
       return;
     }
@@ -149,29 +211,30 @@ const TripDetails = () => {
       return;
     }
 
-    if (!passengerInfo.name || !passengerInfo.email || !passengerInfo.phone) {
-      toast.error('Please fill in all passenger details');
-      return;
+    // Validate all passengers have required fields
+    for (let i = 0; i < passengers.length; i++) {
+      const p = passengers[i];
+      if (!p.fullName.trim()) {
+        toast.error(`Please enter the full name for passenger ${i + 1}`);
+        return;
+      }
+      if (!p.phone.trim()) {
+        toast.error(`Please enter the phone number for passenger ${i + 1}`);
+        return;
+      }
     }
 
     try {
-      const seatNumbers = seats
-        .filter(s => selectedSeats.includes(s.id))
-        .map(s => s.number);
-
-      await bookTrip.mutateAsync({
+      const result = await bookTrip.mutateAsync({
         tripId: id!,
-        seats: seatNumbers,
+        passengers,
         totalAmount: totalPrice,
-        passengerName: passengerInfo.name,
-        passengerEmail: passengerInfo.email,
-        passengerPhone: passengerInfo.phone,
       });
 
-      toast.success('Booking confirmed! Check your bookings for details.');
-      navigate('/my-bookings');
+      toast.success(`Booking initiated! Complete payment within ${result.holdMinutes} minutes.`);
+      navigate(`/booking/${result.booking.id}/payment`);
     } catch (error: any) {
-      toast.error(error.message || 'Failed to complete booking');
+      toast.error(error.message || 'Failed to initiate booking');
     }
   };
 
@@ -346,114 +409,55 @@ const TripDetails = () => {
                 </div>
               </div>
 
-              {/* Passenger Details */}
-              {user && selectedSeats.length > 0 && (
+              {/* Passenger Details - Multi-passenger */}
+              {selectedSeats.length > 0 && (
                 <div className="bg-card rounded-2xl border border-border p-6">
-                  <h3 className="font-display text-lg font-semibold mb-4">Passenger Details</h3>
-                  <div className="grid md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="name">Full Name</Label>
-                      <Input
-                        id="name"
-                        value={passengerInfo.name}
-                        onChange={(e) => setPassengerInfo({ ...passengerInfo, name: e.target.value })}
-                        placeholder="Enter your full name"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="email">Email</Label>
-                      <Input
-                        id="email"
-                        type="email"
-                        value={passengerInfo.email}
-                        onChange={(e) => setPassengerInfo({ ...passengerInfo, email: e.target.value })}
-                        placeholder="Enter your email"
-                      />
-                    </div>
-                    <div className="space-y-2 md:col-span-2">
-                      <Label htmlFor="phone">Phone Number</Label>
-                      <Input
-                        id="phone"
-                        type="tel"
-                        value={passengerInfo.phone}
-                        onChange={(e) => setPassengerInfo({ ...passengerInfo, phone: e.target.value })}
-                        placeholder="Enter your phone number"
-                      />
-                    </div>
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-display text-lg font-semibold">Passenger Details</h3>
+                    <span className="text-sm text-muted-foreground">
+                      {passengers.length} passenger{passengers.length > 1 ? 's' : ''}
+                    </span>
                   </div>
+
+                  {!user && (
+                    <div className="flex items-center gap-2 p-4 bg-primary/10 text-primary rounded-lg mb-4">
+                      <Info className="h-5 w-5 flex-shrink-0" />
+                      <p className="text-sm">
+                        Please sign in to fill in passenger details and complete your booking.
+                      </p>
+                    </div>
+                  )}
+
+                  {user && (
+                    <div className="space-y-4">
+                      {passengers.map((passenger, index) => (
+                        <PassengerForm
+                          key={passenger.seatNumber}
+                          index={index}
+                          passenger={passenger}
+                          seatNumber={passenger.seatNumber}
+                          onChange={handlePassengerChange}
+                          onRemove={handleRemoveSeat}
+                          showRemove={passengers.length > 1}
+                        />
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
 
             {/* Booking Summary */}
             <div className="lg:col-span-1">
-              <div className="sticky top-24 bg-card rounded-2xl border border-border p-6">
-                <h3 className="font-display text-lg font-semibold mb-4">Booking Summary</h3>
-
-                <div className="space-y-3 mb-6">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Route</span>
-                    <span className="font-medium">{trip.route?.origin_city?.name} → {trip.route?.destination_city?.name}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Date</span>
-                    <span className="font-medium">{format(new Date(trip.departure_time), 'PPP')}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Time</span>
-                    <span className="font-medium">{format(new Date(trip.departure_time), 'p')}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Seat(s)</span>
-                    <span className="font-medium">
-                      {selectedSeats.length > 0
-                        ? seats
-                            .filter(s => selectedSeats.includes(s.id))
-                            .map(s => s.number)
-                            .join(', ')
-                        : 'None selected'}
-                    </span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Price per seat</span>
-                    <span className="font-medium">₦{trip.price.toLocaleString()}</span>
-                  </div>
-                </div>
-
-                <div className="border-t border-border pt-4 mb-6">
-                  <div className="flex justify-between items-center">
-                    <span className="font-semibold">Total</span>
-                    <span className="font-display text-2xl font-bold text-primary">
-                      ₦{totalPrice.toLocaleString()}
-                    </span>
-                  </div>
-                </div>
-
-                <Button
-                  size="lg"
-                  className="w-full"
-                  onClick={handleProceed}
-                  disabled={selectedSeats.length === 0 || bookTrip.isPending}
-                >
-                  {bookTrip.isPending ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Processing...
-                    </>
-                  ) : user ? (
-                    'Confirm Booking'
-                  ) : (
-                    'Sign In to Book'
-                  )}
-                </Button>
-
-                <div className="flex items-start gap-2 mt-4 p-3 bg-muted rounded-lg">
-                  <Info className="h-4 w-4 text-muted-foreground mt-0.5" />
-                  <p className="text-xs text-muted-foreground">
-                    You can cancel your booking up to 2 hours before departure for a full refund.
-                  </p>
-                </div>
-              </div>
+              <BookingSummary
+                trip={trip}
+                selectedSeats={selectedSeats}
+                seatNumbers={seatNumbers}
+                totalPrice={totalPrice}
+                onProceed={handleProceed}
+                isPending={bookTrip.isPending}
+                isAuthenticated={!!user}
+              />
             </div>
           </div>
         </div>
