@@ -1,48 +1,21 @@
 import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { useRef, useState } from 'react';
-import html2canvas from 'html2canvas';
-import jsPDF from 'jspdf';
+import { useRef } from 'react';
 import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { CheckCircle, MapPin, Clock, Users, Download, Calendar, Loader2 } from 'lucide-react';
+import { CheckCircle, MapPin, Clock, Users, Download, Calendar, Loader2, Printer } from 'lucide-react';
 import { format, differenceInHours, differenceInMinutes } from 'date-fns';
-import ETicket from '@/components/booking/ETicket';
 
 const BookingConfirmation = () => {
   const { id } = useParams();
   const { user } = useAuth();
-  const ticketRef = useRef<HTMLDivElement>(null);
-  const [isDownloading, setIsDownloading] = useState(false);
+  const printRef = useRef<HTMLDivElement>(null);
 
-  const downloadTicket = async () => {
-    if (!ticketRef.current || !booking) return;
-    
-    setIsDownloading(true);
-    try {
-      const canvas = await html2canvas(ticketRef.current, {
-        scale: 2,
-        useCORS: true,
-        backgroundColor: '#ffffff',
-      });
-      
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF({
-        orientation: 'landscape',
-        unit: 'px',
-        format: [canvas.width, canvas.height],
-      });
-      
-      pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
-      pdf.save(`NigeriaBus-Ticket-${booking.ticket_code}.pdf`);
-    } catch (error) {
-      console.error('Failed to download ticket:', error);
-    } finally {
-      setIsDownloading(false);
-    }
+  const handlePrint = () => {
+    window.print();
   };
 
   const { data: booking, isLoading, error } = useQuery({
@@ -123,8 +96,8 @@ const BookingConfirmation = () => {
       <main className="flex-1">
         <div className="container py-8 max-w-3xl">
           {/* Success Header */}
-          <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-primary/10 mb-4">
+          <div className="text-center mb-8 print:mb-4">
+            <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-primary/10 mb-4 print:hidden">
               <CheckCircle className="h-10 w-10 text-primary" />
             </div>
             <h1 className="font-display text-2xl font-bold mb-2">Booking Confirmed!</h1>
@@ -133,22 +106,22 @@ const BookingConfirmation = () => {
             </p>
           </div>
 
-          {/* Departure Countdown */}
+          {/* Departure Countdown - Hide on print */}
           {getDepartureCountdown() && getDepartureCountdown() !== 'Departed' && (
-            <div className="bg-primary/10 rounded-2xl p-6 mb-6 text-center">
+            <div className="bg-primary/10 rounded-2xl p-6 mb-6 text-center print:hidden">
               <p className="text-sm text-muted-foreground mb-1">Time until departure</p>
               <p className="font-display text-3xl font-bold text-primary">{getDepartureCountdown()}</p>
             </div>
           )}
 
-          {/* Ticket Card */}
-          <div className="bg-card rounded-2xl border border-border overflow-hidden mb-6">
+          {/* Ticket Card - Printable */}
+          <div ref={printRef} className="bg-card rounded-2xl border border-border overflow-hidden mb-6 print:border-2 print:border-black">
             {/* Header */}
-            <div className="bg-primary p-4 text-primary-foreground">
+            <div className="bg-primary p-4 text-primary-foreground print:bg-gray-800 print:text-white">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-lg bg-white/20 flex items-center justify-center text-xl">
-                    {booking.trip?.bus?.company?.logo_url || '🚌'}
+                    🚌
                   </div>
                   <div>
                     <p className="font-semibold">{booking.trip?.bus?.company?.name}</p>
@@ -170,9 +143,9 @@ const BookingConfirmation = () => {
                   <p className="text-sm text-muted-foreground">{format(new Date(booking.trip?.departure_time), 'p')}</p>
                 </div>
                 <div className="flex-1 flex items-center justify-center px-4">
-                  <div className="flex-1 h-px bg-border" />
-                  <MapPin className="h-5 w-5 mx-2 text-primary" />
-                  <div className="flex-1 h-px bg-border" />
+                  <div className="flex-1 h-px bg-border print:bg-gray-400" />
+                  <MapPin className="h-5 w-5 mx-2 text-primary print:text-gray-600" />
+                  <div className="flex-1 h-px bg-border print:bg-gray-400" />
                 </div>
                 <div className="text-center">
                   <p className="text-2xl font-bold">{booking.trip?.route?.destination_city?.name}</p>
@@ -181,7 +154,7 @@ const BookingConfirmation = () => {
               </div>
 
               {/* Details Grid */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 py-4 border-y border-dashed border-border">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 py-4 border-y border-dashed border-border print:border-gray-400">
                 <div>
                   <div className="flex items-center gap-2 text-muted-foreground mb-1">
                     <Calendar className="h-4 w-4" />
@@ -205,7 +178,7 @@ const BookingConfirmation = () => {
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground mb-1">Total Paid</p>
-                  <p className="font-display text-lg font-bold text-primary">₦{Number(booking.total_amount).toLocaleString()}</p>
+                  <p className="font-display text-lg font-bold text-primary print:text-gray-900">₦{Number(booking.total_amount).toLocaleString()}</p>
                 </div>
               </div>
 
@@ -214,8 +187,8 @@ const BookingConfirmation = () => {
                 <h3 className="font-medium mb-3">Passengers</h3>
                 <div className="space-y-2">
                   {booking.passengers?.map((passenger: any) => (
-                    <div key={passenger.id} className="flex items-center gap-3 p-2 bg-muted/30 rounded-lg">
-                      <span className="flex items-center justify-center w-7 h-7 rounded bg-primary text-primary-foreground text-xs font-medium">
+                    <div key={passenger.id} className="flex items-center gap-3 p-2 bg-muted/30 rounded-lg print:bg-gray-100">
+                      <span className="flex items-center justify-center w-7 h-7 rounded bg-primary text-primary-foreground text-xs font-medium print:bg-gray-800 print:text-white">
                         {passenger.seat_number}
                       </span>
                       <div className="flex-1">
@@ -228,33 +201,34 @@ const BookingConfirmation = () => {
               </div>
 
               {/* Ticket Code */}
-              <div className="mt-6 p-4 bg-muted/30 rounded-lg text-center">
+              <div className="mt-6 p-4 bg-muted/30 rounded-lg text-center print:bg-gray-100 print:border print:border-gray-300">
                 <p className="text-sm text-muted-foreground mb-1">Booking Reference</p>
                 <p className="font-mono text-2xl font-bold tracking-wider">{booking.ticket_code}</p>
                 <p className="text-xs text-muted-foreground mt-2">Show this code when boarding</p>
               </div>
+
+              {/* Print-only boarding instructions */}
+              <div className="hidden print:block mt-6 p-4 border border-gray-300 rounded-lg">
+                <p className="font-bold mb-2">Boarding Instructions:</p>
+                <ul className="text-sm space-y-1">
+                  <li>• Arrive at the terminal 30 minutes before departure</li>
+                  <li>• Present this e-ticket (printed or on screen) at the gate</li>
+                  <li>• Have a valid ID ready for verification</li>
+                </ul>
+              </div>
             </div>
           </div>
 
-          {/* Hidden E-Ticket for PDF generation */}
-          <div className="fixed left-[-9999px] top-0">
-            <ETicket ref={ticketRef} booking={booking} />
-          </div>
-
-          {/* Actions */}
-          <div className="flex flex-col sm:flex-row gap-3">
+          {/* Actions - Hide on print */}
+          <div className="flex flex-col sm:flex-row gap-3 print:hidden">
             <Button 
               variant="outline" 
               className="flex-1" 
-              onClick={downloadTicket}
-              disabled={isDownloading || booking.status !== 'confirmed'}
+              onClick={handlePrint}
+              disabled={booking.status !== 'confirmed'}
             >
-              {isDownloading ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <Download className="h-4 w-4 mr-2" />
-              )}
-              {isDownloading ? 'Generating...' : 'Download E-Ticket'}
+              <Printer className="h-4 w-4 mr-2" />
+              Print E-Ticket
             </Button>
             <Link to="/my-bookings" className="flex-1">
               <Button className="w-full">View All Bookings</Button>
@@ -262,7 +236,7 @@ const BookingConfirmation = () => {
           </div>
 
           {/* Support Info */}
-          <div className="mt-8 p-4 bg-muted/30 rounded-lg text-center text-sm text-muted-foreground">
+          <div className="mt-8 p-4 bg-muted/30 rounded-lg text-center text-sm text-muted-foreground print:mt-4 print:border print:border-gray-300">
             <p>Need help? Contact our support team</p>
             <p className="font-medium text-foreground">support@nigeriabus.com • +234 800 123 4567</p>
           </div>
@@ -270,6 +244,16 @@ const BookingConfirmation = () => {
       </main>
 
       <Footer />
+
+      {/* Print styles */}
+      <style>{`
+        @media print {
+          body { background: white !important; }
+          header, footer, nav { display: none !important; }
+          .print\\:hidden { display: none !important; }
+          .hidden.print\\:block { display: block !important; }
+        }
+      `}</style>
     </div>
   );
 };
