@@ -1,8 +1,21 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
-// Resend API helper
-const sendEmail = async (apiKey: string, options: { from: string; to: string[]; subject: string; html: string }) => {
+// Resend API helper with attachment support
+interface EmailAttachment {
+  filename: string;
+  content: string; // base64 encoded content
+}
+
+interface SendEmailOptions {
+  from: string;
+  to: string[];
+  subject: string;
+  html: string;
+  attachments?: EmailAttachment[];
+}
+
+const sendEmail = async (apiKey: string, options: SendEmailOptions) => {
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
@@ -18,6 +31,155 @@ const sendEmail = async (apiKey: string, options: { from: string; to: string[]; 
   }
   
   return response.json();
+};
+
+// Generate HTML ticket for attachment
+const generateTicketHtml = (booking: any, trip: any, departureDate: Date) => {
+  const passengerRows = booking.passengers
+    ?.map((p: any, i: number) => `
+      <tr>
+        <td style="padding: 8px; border: 1px solid #d1d5db;">${i + 1}</td>
+        <td style="padding: 8px; border: 1px solid #d1d5db;">${p.full_name}</td>
+        <td style="padding: 8px; border: 1px solid #d1d5db;">${p.seat_number}</td>
+        <td style="padding: 8px; border: 1px solid #d1d5db;">${p.phone}</td>
+        <td style="padding: 8px; border: 1px solid #d1d5db;">${p.nin || 'N/A'}</td>
+      </tr>
+    `)
+    .join("") || "";
+
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <title>E-Ticket - ${booking.ticket_code}</title>
+      <style>
+        @page { size: A4; margin: 20mm; }
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
+        .ticket { max-width: 800px; margin: 0 auto; border: 3px solid #16a34a; border-radius: 12px; overflow: hidden; }
+        .header { background: linear-gradient(135deg, #16a34a 0%, #15803d 100%); padding: 20px; text-align: center; color: white; }
+        .header h1 { margin: 0; font-size: 24px; }
+        .booking-ref { background: #f0fdf4; padding: 15px; text-align: center; border-bottom: 2px dashed #16a34a; }
+        .booking-ref .code { font-size: 28px; font-weight: bold; color: #16a34a; letter-spacing: 3px; }
+        .content { padding: 20px; }
+        .route { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; text-align: center; }
+        .city { flex: 1; }
+        .city-name { font-size: 22px; font-weight: bold; }
+        .city-state { color: #6b7280; font-size: 12px; }
+        .arrow { padding: 0 20px; color: #16a34a; font-size: 24px; }
+        .details { background: #f9fafb; border-radius: 8px; padding: 15px; margin-bottom: 20px; }
+        .details-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        .detail-item label { display: block; font-size: 11px; color: #6b7280; text-transform: uppercase; }
+        .detail-item span { font-weight: bold; font-size: 14px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th { background: #16a34a; color: white; padding: 10px; text-align: left; }
+        .total { text-align: right; margin-top: 15px; font-size: 18px; }
+        .total strong { color: #16a34a; }
+        .instructions { background: #1f2937; color: white; padding: 15px; margin-top: 20px; }
+        .instructions h3 { margin: 0 0 10px; font-size: 14px; }
+        .instructions ul { margin: 0; padding-left: 20px; font-size: 12px; color: #d1d5db; }
+        .footer { text-align: center; padding: 15px; background: #f9fafb; font-size: 12px; color: #6b7280; }
+        .qr-placeholder { text-align: center; padding: 15px; border: 1px dashed #d1d5db; margin: 15px 0; }
+      </style>
+    </head>
+    <body>
+      <div class="ticket">
+        <div class="header">
+          <h1>🚌 NigeriaBus E-Ticket</h1>
+        </div>
+        
+        <div class="booking-ref">
+          <small style="color: #6b7280;">Booking Reference</small>
+          <div class="code">${booking.ticket_code}</div>
+        </div>
+        
+        <div class="content">
+          <div class="route">
+            <div class="city">
+              <div class="city-name">${trip.route?.origin_city?.name}</div>
+              <div class="city-state">${trip.route?.origin_city?.state}</div>
+            </div>
+            <div class="arrow">→</div>
+            <div class="city">
+              <div class="city-name">${trip.route?.destination_city?.name}</div>
+              <div class="city-state">${trip.route?.destination_city?.state}</div>
+            </div>
+          </div>
+          
+          <div class="details">
+            <div class="details-grid">
+              <div class="detail-item">
+                <label>📅 Departure Date</label>
+                <span>${departureDate.toLocaleDateString("en-NG", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</span>
+              </div>
+              <div class="detail-item">
+                <label>🕐 Departure Time</label>
+                <span>${departureDate.toLocaleTimeString("en-NG", { hour: "2-digit", minute: "2-digit" })}</span>
+              </div>
+              <div class="detail-item">
+                <label>🚌 Transport Company</label>
+                <span>${trip.bus?.company?.name}</span>
+              </div>
+              <div class="detail-item">
+                <label>🎫 Bus Type</label>
+                <span style="text-transform: capitalize;">${trip.bus?.bus_type} Bus</span>
+              </div>
+              <div class="detail-item">
+                <label>💺 Seat Numbers</label>
+                <span>${booking.seats?.join(", ")}</span>
+              </div>
+              <div class="detail-item">
+                <label>⏱️ Duration</label>
+                <span>${trip.route?.duration_hours} hours</span>
+              </div>
+            </div>
+          </div>
+          
+          <h3 style="margin: 20px 0 10px;">Passenger Details</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Full Name</th>
+                <th>Seat</th>
+                <th>Phone</th>
+                <th>NIN</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${passengerRows}
+            </tbody>
+          </table>
+          
+          <div class="total">
+            Total Amount Paid: <strong>₦${Number(booking.total_amount).toLocaleString()}</strong>
+          </div>
+          
+          <div class="qr-placeholder">
+            <p style="margin: 0; font-weight: bold;">Ticket Code: ${booking.ticket_code}</p>
+            <small>Present this ticket at the terminal</small>
+          </div>
+        </div>
+        
+        <div class="instructions">
+          <h3>📋 BOARDING INSTRUCTIONS</h3>
+          <ul>
+            <li>Arrive at the terminal 30 minutes before departure</li>
+            <li>Present this e-ticket (printed or on screen) at the gate</li>
+            <li>Have a valid ID ready for verification</li>
+            <li>Keep your booking reference handy: <strong>${booking.ticket_code}</strong></li>
+          </ul>
+        </div>
+        
+        <div class="footer">
+          <p>Thank you for choosing NigeriaBus!</p>
+          <p>Support: support@nigeriabus.com • +234 800 123 4567</p>
+          <p style="margin-top: 10px; font-size: 10px;">Generated on ${new Date().toLocaleString("en-NG")}</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
 };
 
 const corsHeaders = {
@@ -228,11 +390,21 @@ const handler = async (req: Request): Promise<Response> => {
       throw new Error("RESEND_API_KEY not configured");
     }
 
+    // Generate ticket HTML for attachment
+    const ticketHtml = generateTicketHtml(booking, trip, departureDate);
+    const ticketBase64 = btoa(unescape(encodeURIComponent(ticketHtml)));
+
     const emailResponse = await sendEmail(resendApiKey, {
       from: "NigeriaBus <onboarding@resend.dev>",
       to: [recipientEmail],
       subject: `Your E-Ticket: ${trip.route?.origin_city?.name} → ${trip.route?.destination_city?.name} - ${booking.ticket_code}`,
       html: emailHtml,
+      attachments: [
+        {
+          filename: `NigeriaBus-Ticket-${booking.ticket_code}.html`,
+          content: ticketBase64,
+        }
+      ],
     });
 
     console.log("Email sent successfully:", emailResponse);
