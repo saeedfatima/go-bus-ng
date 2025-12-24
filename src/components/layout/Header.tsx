@@ -22,6 +22,7 @@ const Header = () => {
     { href: '/', label: 'Home' },
     { href: '/search', label: 'Find Trips' },
     { href: '/companies', label: 'Bus Companies' },
+    { href: '/contact', label: 'Contact' },
     { href: '/about', label: 'About' },
   ];
 

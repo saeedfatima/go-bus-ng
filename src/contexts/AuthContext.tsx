@@ -1,76 +1,88 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { User, Session } from '@supabase/supabase-js';
-import { supabase } from '@/integrations/supabase/client';
+import api from '@/lib/api';
+import { User } from '@/types';
 
 interface AuthContextType {
   user: User | null;
-  session: Session | null;
   loading: boolean;
-  signUp: (email: string, password: string, fullName: string, phone?: string) => Promise<{ error: Error | null }>;
-  signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
-  signOut: () => Promise<void>;
+  signUp: (data: any) => Promise<{ error: Error | null }>;
+  signIn: (data: any) => Promise<{ error: Error | null }>;
+  signOut: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Set up auth state listener FIRST
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        setLoading(false);
-      }
-    );
-
-    // THEN check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  const signUp = async (email: string, password: string, fullName: string, phone?: string) => {
-    const redirectUrl = `${window.location.origin}/`;
-    
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: redirectUrl,
-        data: {
-          full_name: fullName,
-          phone: phone,
+    const checkAuth = async () => {
+      const token = localStorage.getItem('accessToken');
+      if (token) {
+        try {
+          // Ideally, we should have a /me endpoint to get user details. 
+          // For now, we'll decode the token or just assume logged in if token exists.
+          // Since we don't have a /me endpoint yet, let's just set a dummy user or parse from token if possible.
+          // Better approach: Let's assume the user is logged in, but we might not have user details until we fetch them.
+          // Or we can store user details in localStorage on login.
+          const storedUser = localStorage.getItem('user');
+          if (storedUser) {
+            setUser(JSON.parse(storedUser));
+          }
+        } catch (error) {
+          console.error('Auth check failed', error);
+          localStorage.removeItem('accessToken');
+          localStorage.removeItem('refreshToken');
+          localStorage.removeItem('user');
         }
       }
-    });
-    
-    return { error: error as Error | null };
+      setLoading(false);
+    };
+
+    checkAuth();
+  }, []);
+
+  const signUp = async (data: any) => {
+    try {
+      await api.post('register/', data);
+      return { error: null };
+    } catch (error: any) {
+      return { error: error.response?.data || error.message };
+    }
   };
 
-  const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-    
-    return { error: error as Error | null };
+  const signIn = async (data: any) => {
+    try {
+      const response = await api.post('login/', data);
+      const { access, refresh } = response.data;
+      localStorage.setItem('accessToken', access);
+      localStorage.setItem('refreshToken', refresh);
+
+      // Since we don't have a /me endpoint, we can't get the user object easily unless the login response returns it.
+      // The simplejwt default view only returns tokens.
+      // We should probably customize the login view or add a /me endpoint.
+      // For now, let's just store the username if we sent it, or decode the token.
+      // Actually, let's just set a basic user object.
+      const userObj = { id: 0, username: data.username, email: '' }; // Placeholder
+      setUser(userObj);
+      localStorage.setItem('user', JSON.stringify(userObj));
+
+      return { error: null };
+    } catch (error: any) {
+      return { error: error.response?.data || error.message };
+    }
   };
 
-  const signOut = async () => {
-    await supabase.auth.signOut();
+  const signOut = () => {
+    localStorage.removeItem('accessToken');
+    localStorage.removeItem('refreshToken');
+    localStorage.removeItem('user');
+    setUser(null);
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, loading, signUp, signIn, signOut }}>
+    <AuthContext.Provider value={{ user, loading, signUp, signIn, signOut }}>
       {children}
     </AuthContext.Provider>
   );

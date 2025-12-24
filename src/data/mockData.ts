@@ -11,12 +11,17 @@ export const cities: City[] = [
   { id: '8', name: 'Enugu', state: 'Enugu' },
   { id: '9', name: 'Calabar', state: 'Cross River' },
   { id: '10', name: 'Owerri', state: 'Imo' },
+  { id: '11', name: 'Bauchi', state: 'Bauchi' }, 
+  { id: '12', name: 'Sokoto', state: 'Sokoto' }, 
+  { id: '13', name: 'Zamfara', state: 'Gusau' }, 
+  { id: '14', name: 'Jigawa', state: 'Dutse' }, 
+  { id: '15', name: 'Kwara', state: 'Kogi' }, 
 ];
 
 export const companies: Company[] = [
   {
     id: '1',
-    name: 'ABC Transport',
+    name: 'GOD BLESS EZENWATA Transport',
     logo: '🚌',
     rating: 4.5,
     totalTrips: 15000,
@@ -32,23 +37,24 @@ export const companies: Company[] = [
   },
   {
     id: '3',
-    name: 'Peace Mass Transit',
+    name: 'Landstar Express',
     logo: '🚐',
     rating: 4.1,
     totalTrips: 18000,
     isVerified: true,
   },
-  {
-    id: '4',
-    name: 'Chisco Transport',
-    logo: '🚎',
-    rating: 4.4,
-    totalTrips: 10000,
-    isVerified: true,
-  },
+  
   {
     id: '5',
     name: 'Young Shall Grow',
+    logo: '🚌',
+    rating: 4.0,
+    totalTrips: 8000,
+    isVerified: true,
+  },
+  {
+    id: '6',
+    name: 'Delta Express',
     logo: '🚌',
     rating: 4.0,
     totalTrips: 8000,

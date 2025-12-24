@@ -35,7 +35,7 @@ const HeroSection = () => {
           {/* Stats */}
           <div className="flex flex-wrap justify-center gap-8 mb-10 animate-slide-up" style={{ animationDelay: '200ms' }}>
             <div className="text-center">
-              <p className="font-display text-3xl font-bold text-foreground">50+</p>
+              <p className="font-display text-3xl font-bold text-foreground">15+</p>
               <p className="text-sm text-muted-foreground">Bus Companies</p>
             </div>
             <div className="text-center">

@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import api from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
+import { Trip } from '@/types';
 
 interface PassengerData {
   fullName: string;
@@ -36,12 +37,12 @@ const calculateHoldTime = (departureTime: string, availableSeats: number, totalS
   if (hoursUntilDeparture < 6 || seatAvailabilityRatio < 0.2) {
     return 30;
   }
-  
+
   // High demand (< 40% seats) or moderate time (< 24 hours) = 1 hour
   if (hoursUntilDeparture < 24 || seatAvailabilityRatio < 0.4) {
     return 60;
   }
-  
+
   // Normal conditions = 2 hours
   return 120;
 };
@@ -55,47 +56,20 @@ export const useMultiPassengerBooking = () => {
       if (!user) throw new Error('You must be logged in to book a trip');
 
       // Get trip details for hold time calculation
-      const { data: trip, error: tripError } = await supabase
-        .from('trips')
-        .select('departure_time, available_seats, bus:buses(total_seats)')
-        .eq('id', data.tripId)
-        .single();
-
-      if (tripError) throw tripError;
+      const tripResponse = await api.get<Trip>(`trips/${data.tripId}/`);
+      const trip = tripResponse.data;
 
       const holdMinutes = calculateHoldTime(
         trip.departure_time,
         trip.available_seats,
-        trip.bus?.total_seats || 48
+        trip.bus.total_seats
       );
 
       const holdExpiresAt = new Date(Date.now() + holdMinutes * 60 * 1000).toISOString();
       const ticketCode = generateTicketCode();
       const seatNumbers = data.passengers.map(p => p.seatNumber);
 
-      // Create the booking with pending status and hold time
-      const { data: booking, error: bookingError } = await supabase
-        .from('bookings')
-        .insert({
-          trip_id: data.tripId,
-          user_id: user.id,
-          seats: seatNumbers,
-          total_amount: data.totalAmount,
-          passenger_name: data.passengers[0].fullName, // Primary passenger
-          passenger_email: data.passengers[0].email || user.email || '',
-          passenger_phone: data.passengers[0].phone,
-          ticket_code: ticketCode,
-          status: 'pending',
-          hold_expires_at: holdExpiresAt,
-        })
-        .select()
-        .single();
-
-      if (bookingError) throw bookingError;
-
-      // Insert all passengers
       const passengersToInsert = data.passengers.map(p => ({
-        booking_id: booking.id,
         full_name: p.fullName,
         phone: p.phone,
         email: p.email || null,
@@ -103,25 +77,20 @@ export const useMultiPassengerBooking = () => {
         seat_number: p.seatNumber,
       }));
 
-      const { error: passengersError } = await supabase
-        .from('booking_passengers')
-        .insert(passengersToInsert);
+      const response = await api.post('bookings/', {
+        trip: data.tripId,
+        seats: seatNumbers,
+        total_amount: data.totalAmount,
+        passenger_name: data.passengers[0].fullName, // Primary passenger
+        passenger_email: data.passengers[0].email || user.email || '',
+        passenger_phone: data.passengers[0].phone,
+        ticket_code: ticketCode,
+        status: 'pending',
+        hold_expires_at: holdExpiresAt,
+        passengers: passengersToInsert,
+      });
 
-      if (passengersError) {
-        // Rollback booking if passengers insert fails
-        await supabase.from('bookings').delete().eq('id', booking.id);
-        throw passengersError;
-      }
-
-      // Reserve seats (reduce available seats)
-      const { error: updateError } = await supabase
-        .from('trips')
-        .update({ available_seats: trip.available_seats - seatNumbers.length })
-        .eq('id', data.tripId);
-
-      if (updateError) throw updateError;
-
-      return { booking, holdMinutes };
+      return { booking: response.data, holdMinutes };
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['my-bookings'] });

@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import api from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface BookingData {
@@ -30,39 +30,19 @@ export const useBookTrip = () => {
 
       const ticketCode = generateTicketCode();
 
-      const { data: booking, error } = await supabase
-        .from('bookings')
-        .insert({
-          trip_id: data.tripId,
-          user_id: user.id,
-          seats: data.seats,
-          total_amount: data.totalAmount,
-          passenger_name: data.passengerName,
-          passenger_email: data.passengerEmail,
-          passenger_phone: data.passengerPhone,
-          ticket_code: ticketCode,
-          status: 'confirmed',
-        })
-        .select()
-        .single();
+      const response = await api.post('bookings/', {
+        trip: data.tripId,
+        // user is handled by backend
+        seats: data.seats,
+        total_amount: data.totalAmount,
+        passenger_name: data.passengerName,
+        passenger_email: data.passengerEmail,
+        passenger_phone: data.passengerPhone,
+        ticket_code: ticketCode,
+        status: 'confirmed',
+      });
 
-      if (error) throw error;
-
-      // Update available seats on the trip
-      const { data: trip } = await supabase
-        .from('trips')
-        .select('available_seats')
-        .eq('id', data.tripId)
-        .single();
-
-      if (trip) {
-        await supabase
-          .from('trips')
-          .update({ available_seats: trip.available_seats - data.seats.length })
-          .eq('id', data.tripId);
-      }
-
-      return booking;
+      return response.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['my-bookings'] });
