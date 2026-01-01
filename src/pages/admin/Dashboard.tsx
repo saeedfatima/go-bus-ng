@@ -1,10 +1,9 @@
-import { useState } from 'react';
 import { useNavigate, Outlet, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
-import { Shield, Building2, LogOut } from 'lucide-react';
+import { Shield, Building2, LogOut, LayoutDashboard, Users, Ticket, BarChart3 } from 'lucide-react';
 
 const AdminDashboard = () => {
   const { user, signOut } = useAuth();
@@ -53,7 +52,11 @@ const AdminDashboard = () => {
   }
 
   const navItems = [
+    { path: '/admin', label: 'Overview', icon: LayoutDashboard },
     { path: '/admin/companies', label: 'Companies', icon: Building2 },
+    { path: '/admin/users', label: 'Users', icon: Users },
+    { path: '/admin/bookings', label: 'Bookings', icon: Ticket },
+    { path: '/admin/analytics', label: 'Analytics', icon: BarChart3 },
   ];
 
   return (
