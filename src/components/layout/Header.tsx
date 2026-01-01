@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Bus, Menu, X, User, Building2, Ticket, LogOut } from 'lucide-react';
+import { Bus, Menu, X, User, Building2, Ticket, LogOut, Shield } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,6 +19,21 @@ const Header = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
+
+  // Check if user has admin role
+  const { data: isAdmin } = useQuery({
+    queryKey: ['admin-role', user?.id],
+    queryFn: async () => {
+      if (!user) return false;
+      const { data, error } = await supabase.rpc('has_role', {
+        _user_id: user.id,
+        _role: 'admin'
+      });
+      if (error) return false;
+      return data;
+    },
+    enabled: !!user,
+  });
 
   const navLinks = [
     { href: '/', label: 'Home' },
@@ -88,6 +105,17 @@ const Header = () => {
                     My Bookings
                   </Link>
                 </DropdownMenuItem>
+                {isAdmin && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem asChild>
+                      <Link to="/admin" className="flex items-center gap-2">
+                        <Shield className="h-4 w-4" />
+                        Admin Dashboard
+                      </Link>
+                    </DropdownMenuItem>
+                  </>
+                )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleSignOut} className="text-destructive">
                   <LogOut className="h-4 w-4 mr-2" />
@@ -139,13 +167,25 @@ const Header = () => {
             ))}
             
             {user && (
-              <Link
-                to="/my-bookings"
-                onClick={() => setIsMobileMenuOpen(false)}
-                className="px-4 py-3 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-accent"
-              >
-                My Bookings
-              </Link>
+              <>
+                <Link
+                  to="/my-bookings"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="px-4 py-3 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-accent"
+                >
+                  My Bookings
+                </Link>
+                {isAdmin && (
+                  <Link
+                    to="/admin"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="px-4 py-3 rounded-lg text-sm font-medium text-primary hover:text-foreground hover:bg-accent flex items-center gap-2"
+                  >
+                    <Shield className="h-4 w-4" />
+                    Admin Dashboard
+                  </Link>
+                )}
+              </>
             )}
             
             <div className="flex gap-2 mt-4 pt-4 border-t border-border">
