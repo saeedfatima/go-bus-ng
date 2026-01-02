@@ -13,6 +13,8 @@ import BookingPayment from "./pages/BookingPayment";
 import BookingConfirmation from "./pages/BookingConfirmation";
 import Companies from "./pages/Companies";
 import CompanyRegister from "./pages/CompanyRegister";
+import PopularRoutesPage from "./pages/PopularRoutes";
+import HelpCenter from "./pages/HelpCenter";
 import Dashboard from "./pages/company/Dashboard";
 import Overview from "./pages/company/Overview";
 import Buses from "./pages/company/Buses";
@@ -46,6 +48,8 @@ const App = () => (
             <Route path="/booking/:id/payment" element={<BookingPayment />} />
             <Route path="/booking/:id/confirmation" element={<BookingConfirmation />} />
             <Route path="/companies" element={<Companies />} />
+            <Route path="/routes" element={<PopularRoutesPage />} />
+            <Route path="/help" element={<HelpCenter />} />
             <Route path="/company/register" element={<CompanyRegister />} />
             <Route path="/company/login" element={<CompanyRegister />} />
             <Route path="/company/dashboard" element={<Dashboard />}>
