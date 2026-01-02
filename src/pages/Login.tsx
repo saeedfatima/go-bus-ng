@@ -20,14 +20,17 @@ const Login = () => {
     phone: '',
   });
   
-  const { user, signIn, signUp } = useAuth();
+  const { user, signIn, signUp, loading: authLoading } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
+    // Wait for auth loading to complete before redirecting
+    if (authLoading) return;
+    
     if (user) {
-      navigate('/');
+      navigate('/', { replace: true });
     }
-  }, [user, navigate]);
+  }, [user, authLoading, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
