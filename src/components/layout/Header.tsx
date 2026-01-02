@@ -39,7 +39,8 @@ const Header = () => {
     { href: '/', label: 'Home' },
     { href: '/search', label: 'Find Trips' },
     { href: '/companies', label: 'Bus Companies' },
-    { href: '/about', label: 'About' },
+    { href: '/routes', label: 'Popular Routes' },
+    { href: '/help', label: 'Help' },
   ];
 
   const isActive = (path: string) => location.pathname === path;
