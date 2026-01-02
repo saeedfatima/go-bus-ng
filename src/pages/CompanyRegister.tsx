@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Bus, Mail, Lock, Eye, EyeOff, User, Building2, Phone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -32,8 +32,29 @@ const CompanyRegister = () => {
     companyDescription: '',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const { signIn, signUp } = useAuth();
+  const { signIn, signUp, user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
+  
+  // Check if user is already logged in and has a company
+  useEffect(() => {
+    if (authLoading) return;
+    
+    const checkExistingCompany = async () => {
+      if (user) {
+        const { data: company } = await supabase
+          .from('companies')
+          .select('id')
+          .eq('owner_id', user.id)
+          .maybeSingle();
+        
+        if (company) {
+          navigate('/company/dashboard', { replace: true });
+        }
+      }
+    };
+    
+    checkExistingCompany();
+  }, [user, authLoading, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

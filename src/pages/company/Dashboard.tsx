@@ -23,20 +23,38 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [hasCheckedAuth, setHasCheckedAuth] = useState(false);
 
   useEffect(() => {
-    if (!authLoading && !user) {
-      navigate('/company/register');
-    }
+    // Wait for auth to fully load before making redirect decisions
+    if (authLoading) return;
+    
+    // Give a small delay for state to stabilize after login
+    const timer = setTimeout(() => {
+      if (!user) {
+        navigate('/company/register', { replace: true });
+      }
+      setHasCheckedAuth(true);
+    }, 100);
+
+    return () => clearTimeout(timer);
   }, [user, authLoading, navigate]);
 
   useEffect(() => {
-    if (!authLoading && !companyLoading && user && !company) {
-      navigate('/company/register');
-    }
-  }, [user, company, authLoading, companyLoading, navigate]);
+    // Only check company after auth is confirmed and stable
+    if (!hasCheckedAuth || companyLoading || !user) return;
+    
+    // Give company query time to complete
+    const timer = setTimeout(() => {
+      if (!company) {
+        navigate('/company/register', { replace: true });
+      }
+    }, 200);
 
-  if (authLoading || companyLoading) {
+    return () => clearTimeout(timer);
+  }, [user, company, hasCheckedAuth, companyLoading, navigate]);
+
+  if (authLoading || companyLoading || !hasCheckedAuth) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
