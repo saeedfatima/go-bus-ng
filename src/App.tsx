@@ -8,6 +8,7 @@ import Index from "./pages/Index";
 import SearchResults from "./pages/SearchResults";
 import TripDetails from "./pages/TripDetails";
 import Login from "./pages/Login";
+import ForgotPassword from "./pages/ForgotPassword";
 import MyBookings from "./pages/MyBookings";
 import BookingPayment from "./pages/BookingPayment";
 import BookingConfirmation from "./pages/BookingConfirmation";
@@ -44,6 +45,7 @@ const App = () => (
             <Route path="/search" element={<SearchResults />} />
             <Route path="/trip/:id" element={<TripDetails />} />
             <Route path="/login" element={<Login />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/my-bookings" element={<MyBookings />} />
             <Route path="/booking/:id/payment" element={<BookingPayment />} />
             <Route path="/booking/:id/confirmation" element={<BookingConfirmation />} />
