@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Bus, Menu, X, User, Building2, Ticket, LogOut, Shield } from 'lucide-react';
+import { Bus, Menu, X, User, Building2, Ticket, LogOut, Shield, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
@@ -101,6 +101,12 @@ const Header = () => {
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-48">
                 <DropdownMenuItem asChild>
+                  <Link to="/profile" className="flex items-center gap-2">
+                    <Settings className="h-4 w-4" />
+                    My Profile
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
                   <Link to="/my-bookings" className="flex items-center gap-2">
                     <Ticket className="h-4 w-4" />
                     My Bookings
@@ -170,10 +176,19 @@ const Header = () => {
             {user && (
               <>
                 <Link
+                  to="/profile"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="px-4 py-3 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-accent flex items-center gap-2"
+                >
+                  <Settings className="h-4 w-4" />
+                  My Profile
+                </Link>
+                <Link
                   to="/my-bookings"
                   onClick={() => setIsMobileMenuOpen(false)}
-                  className="px-4 py-3 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-accent"
+                  className="px-4 py-3 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-accent flex items-center gap-2"
                 >
+                  <Ticket className="h-4 w-4" />
                   My Bookings
                 </Link>
                 {isAdmin && (
