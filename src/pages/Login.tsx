@@ -5,14 +5,19 @@ import Footer from '@/components/layout/Footer';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Bus, Mail, Lock, Eye, EyeOff, User } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Bus, Mail, Lock, Eye, EyeOff, User, AlertCircle, CheckCircle, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/integrations/supabase/client';
 
 const Login = () => {
   const [isLogin, setIsLogin] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [resendingVerification, setResendingVerification] = useState(false);
+  const [emailNotVerified, setEmailNotVerified] = useState(false);
+  const [signupSuccess, setSignupSuccess] = useState(false);
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -32,15 +37,45 @@ const Login = () => {
     }
   }, [user, authLoading, navigate]);
 
+  const handleResendVerification = async () => {
+    setResendingVerification(true);
+    try {
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email: formData.email,
+        options: {
+          emailRedirectTo: `${window.location.origin}/`,
+        }
+      });
+      
+      if (error) {
+        toast.error(error.message);
+      } else {
+        toast.success('Verification email sent! Please check your inbox.');
+      }
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to resend verification email');
+    } finally {
+      setResendingVerification(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
+    setEmailNotVerified(false);
+    setSignupSuccess(false);
 
     try {
       if (isLogin) {
         const { error } = await signIn(formData.email, formData.password);
         if (error) {
-          toast.error(error.message);
+          // Check if error is related to email verification
+          if (error.message.toLowerCase().includes('email not confirmed')) {
+            setEmailNotVerified(true);
+          } else {
+            toast.error(error.message);
+          }
         } else {
           toast.success('Welcome back!');
           navigate('/');
@@ -50,8 +85,8 @@ const Login = () => {
         if (error) {
           toast.error(error.message);
         } else {
-          toast.success('Account created successfully!');
-          navigate('/');
+          setSignupSuccess(true);
+          toast.success('Account created! Please check your email to verify your account.');
         }
       }
     } catch (error: any) {
@@ -89,6 +124,69 @@ const Login = () => {
                   : 'Join thousands of travelers across Nigeria'}
               </p>
             </div>
+
+            {/* Email Verification Alert */}
+            {emailNotVerified && (
+              <Alert className="mb-4 border-warning bg-warning/10">
+                <AlertCircle className="h-4 w-4 text-warning" />
+                <AlertDescription className="flex flex-col gap-2">
+                  <span className="text-warning-foreground">
+                    Your email address hasn't been verified yet. Please check your inbox.
+                  </span>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={handleResendVerification}
+                    disabled={resendingVerification}
+                    className="self-start"
+                  >
+                    {resendingVerification ? (
+                      <>
+                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                        Sending...
+                      </>
+                    ) : (
+                      <>
+                        <Mail className="h-4 w-4 mr-2" />
+                        Resend Verification Email
+                      </>
+                    )}
+                  </Button>
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {/* Signup Success Alert */}
+            {signupSuccess && (
+              <Alert className="mb-4 border-primary bg-primary/10">
+                <CheckCircle className="h-4 w-4 text-primary" />
+                <AlertDescription className="flex flex-col gap-2">
+                  <span className="text-foreground">
+                    Account created successfully! We've sent a verification email to{' '}
+                    <strong>{formData.email}</strong>. Please verify your email to continue.
+                  </span>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={handleResendVerification}
+                    disabled={resendingVerification}
+                    className="self-start"
+                  >
+                    {resendingVerification ? (
+                      <>
+                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                        Sending...
+                      </>
+                    ) : (
+                      <>
+                        <Mail className="h-4 w-4 mr-2" />
+                        Resend Verification Email
+                      </>
+                    )}
+                  </Button>
+                </AlertDescription>
+              </Alert>
+            )}
 
             <form onSubmit={handleSubmit} className="space-y-4">
               {!isLogin && (
