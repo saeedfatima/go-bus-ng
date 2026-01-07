@@ -13,5 +13,11 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABL
     storage: localStorage,
     persistSession: true,
     autoRefreshToken: true,
+    // Use a unique storage key to prevent conflicts between tabs
+    storageKey: 'supabase-auth-token',
+    // Detect session from URL only on initial load
+    detectSessionInUrl: true,
+    // Flow type for better concurrent access
+    flowType: 'pkce',
   }
 });
