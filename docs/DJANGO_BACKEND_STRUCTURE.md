@@ -2231,6 +2231,1311 @@ FLUTTERWAVE_SECRET_KEY=your-flutterwave-secret
 
 ---
 
+## Testing Strategy
+
+### Test Configuration (conftest.py)
+
+```python
+# conftest.py - Pytest fixtures for all tests
+import pytest
+from rest_framework.test import APIClient
+from django.contrib.auth import get_user_model
+from apps.accounts.models import UserRole, AppRole, Profile
+from apps.cities.models import City
+from apps.companies.models import Company
+from apps.buses.models import Bus, BusType
+from apps.routes.models import Route
+from apps.trips.models import Trip, TripStatus
+from apps.bookings.models import Booking, BookingStatus
+from django.utils import timezone
+from datetime import timedelta
+
+User = get_user_model()
+
+
+@pytest.fixture
+def api_client():
+    """Return an API client instance"""
+    return APIClient()
+
+
+@pytest.fixture
+def create_user(db):
+    """Factory fixture to create users"""
+    def make_user(email='test@example.com', password='testpass123', full_name='Test User', role=AppRole.PASSENGER):
+        user = User.objects.create_user(email=email, password=password, full_name=full_name)
+        UserRole.objects.create(user=user, role=role)
+        Profile.objects.create(user=user, full_name=full_name)
+        return user
+    return make_user
+
+
+@pytest.fixture
+def passenger_user(create_user):
+    """Create a passenger user"""
+    return create_user(email='passenger@example.com', role=AppRole.PASSENGER)
+
+
+@pytest.fixture
+def company_admin_user(create_user):
+    """Create a company admin user"""
+    return create_user(email='company@example.com', role=AppRole.COMPANY_ADMIN)
+
+
+@pytest.fixture
+def admin_user(create_user):
+    """Create an admin user"""
+    return create_user(email='admin@example.com', role=AppRole.ADMIN)
+
+
+@pytest.fixture
+def authenticated_client(api_client, passenger_user):
+    """Return an authenticated API client for passenger"""
+    api_client.force_authenticate(user=passenger_user)
+    return api_client
+
+
+@pytest.fixture
+def company_admin_client(api_client, company_admin_user):
+    """Return an authenticated API client for company admin"""
+    api_client.force_authenticate(user=company_admin_user)
+    return api_client
+
+
+@pytest.fixture
+def admin_client(api_client, admin_user):
+    """Return an authenticated API client for admin"""
+    api_client.force_authenticate(user=admin_user)
+    return api_client
+
+
+@pytest.fixture
+def cities(db):
+    """Create sample cities"""
+    lagos = City.objects.create(name='Lagos', state='Lagos')
+    abuja = City.objects.create(name='Abuja', state='FCT')
+    port_harcourt = City.objects.create(name='Port Harcourt', state='Rivers')
+    return {'lagos': lagos, 'abuja': abuja, 'port_harcourt': port_harcourt}
+
+
+@pytest.fixture
+def company(company_admin_user):
+    """Create a sample company"""
+    return Company.objects.create(
+        name='Test Transport',
+        owner=company_admin_user,
+        description='A test transport company',
+        rating=4.5,
+        is_verified=True
+    )
+
+
+@pytest.fixture
+def bus(company):
+    """Create a sample bus"""
+    return Bus.objects.create(
+        company=company,
+        plate_number='ABC123XY',
+        bus_type=BusType.LUXURY,
+        total_seats=48,
+        amenities=['AC', 'WiFi', 'USB'],
+        is_active=True
+    )
+
+
+@pytest.fixture
+def route(company, cities):
+    """Create a sample route"""
+    return Route.objects.create(
+        company=company,
+        origin_city=cities['lagos'],
+        destination_city=cities['abuja'],
+        base_price=15000.00,
+        duration_hours=8.5,
+        is_active=True
+    )
+
+
+@pytest.fixture
+def trip(route, bus):
+    """Create a sample trip"""
+    departure = timezone.now() + timedelta(days=1)
+    return Trip.objects.create(
+        route=route,
+        bus=bus,
+        departure_time=departure,
+        arrival_time=departure + timedelta(hours=8, minutes=30),
+        price=18000.00,
+        available_seats=48,
+        status=TripStatus.SCHEDULED
+    )
+
+
+@pytest.fixture
+def booking(trip, passenger_user):
+    """Create a sample booking"""
+    return Booking.objects.create(
+        trip=trip,
+        user=passenger_user,
+        seats=['1', '2'],
+        total_amount=36000.00,
+        status=BookingStatus.PENDING,
+        passenger_name='Test Passenger',
+        passenger_phone='08012345678',
+        passenger_email='passenger@test.com',
+        hold_expires_at=timezone.now() + timedelta(minutes=30)
+    )
+```
+
+---
+
+## Unit Tests
+
+### 1. Accounts Unit Tests (apps/accounts/tests/test_unit.py)
+
+```python
+import pytest
+from django.contrib.auth import get_user_model
+from apps.accounts.models import UserRole, Profile, AppRole
+from apps.accounts.serializers import (
+    UserSerializer, UserRegistrationSerializer, LoginSerializer, ProfileSerializer
+)
+
+User = get_user_model()
+
+
+@pytest.mark.django_db
+class TestUserModel:
+    """Unit tests for User model"""
+
+    def test_create_user_success(self):
+        """Test creating a user is successful"""
+        user = User.objects.create_user(
+            email='test@example.com',
+            password='testpass123',
+            full_name='Test User'
+        )
+        assert user.email == 'test@example.com'
+        assert user.full_name == 'Test User'
+        assert user.check_password('testpass123')
+        assert user.is_active
+        assert not user.is_staff
+
+    def test_create_user_email_normalized(self):
+        """Test email is normalized for new users"""
+        email = 'test@EXAMPLE.COM'
+        user = User.objects.create_user(email=email, password='test123')
+        assert user.email == 'test@example.com'
+
+    def test_create_user_without_email_raises(self):
+        """Test creating user without email raises error"""
+        with pytest.raises(ValueError):
+            User.objects.create_user(email='', password='test123')
+
+    def test_create_superuser(self):
+        """Test creating a superuser"""
+        user = User.objects.create_superuser(
+            email='admin@example.com',
+            password='admin123'
+        )
+        assert user.is_staff
+        assert user.is_superuser
+
+    def test_user_str(self):
+        """Test user string representation"""
+        user = User.objects.create_user(email='test@example.com', password='test123')
+        assert str(user) == 'test@example.com'
+
+
+@pytest.mark.django_db
+class TestUserRoleModel:
+    """Unit tests for UserRole model"""
+
+    def test_create_user_role(self, create_user):
+        """Test creating user role"""
+        user = create_user(email='role@example.com')
+        role = UserRole.objects.filter(user=user, role=AppRole.PASSENGER).first()
+        assert role is not None
+        assert role.role == AppRole.PASSENGER
+
+    def test_user_role_unique_constraint(self, create_user):
+        """Test unique constraint on user-role combination"""
+        user = create_user(email='unique@example.com')
+        with pytest.raises(Exception):
+            UserRole.objects.create(user=user, role=AppRole.PASSENGER)
+
+
+@pytest.mark.django_db
+class TestUserRegistrationSerializer:
+    """Unit tests for registration serializer"""
+
+    def test_valid_registration(self):
+        """Test valid registration data"""
+        data = {
+            'email': 'new@example.com',
+            'password': 'securepass123',
+            'confirm_password': 'securepass123',
+            'full_name': 'New User',
+            'phone': '08012345678'
+        }
+        serializer = UserRegistrationSerializer(data=data)
+        assert serializer.is_valid()
+
+    def test_password_mismatch(self):
+        """Test password mismatch validation"""
+        data = {
+            'email': 'new@example.com',
+            'password': 'securepass123',
+            'confirm_password': 'differentpass',
+            'full_name': 'New User'
+        }
+        serializer = UserRegistrationSerializer(data=data)
+        assert not serializer.is_valid()
+        assert 'confirm_password' in serializer.errors
+
+    def test_short_password(self):
+        """Test short password validation"""
+        data = {
+            'email': 'new@example.com',
+            'password': 'short',
+            'confirm_password': 'short',
+            'full_name': 'New User'
+        }
+        serializer = UserRegistrationSerializer(data=data)
+        assert not serializer.is_valid()
+
+
+@pytest.mark.django_db
+class TestLoginSerializer:
+    """Unit tests for login serializer"""
+
+    def test_valid_login(self, create_user):
+        """Test valid login credentials"""
+        create_user(email='login@example.com', password='testpass123')
+        data = {'email': 'login@example.com', 'password': 'testpass123'}
+        serializer = LoginSerializer(data=data)
+        assert serializer.is_valid()
+        assert 'user' in serializer.validated_data
+
+    def test_invalid_credentials(self):
+        """Test invalid login credentials"""
+        data = {'email': 'wrong@example.com', 'password': 'wrongpass'}
+        serializer = LoginSerializer(data=data)
+        assert not serializer.is_valid()
+```
+
+### 2. Bookings Unit Tests (apps/bookings/tests/test_unit.py)
+
+```python
+import pytest
+from decimal import Decimal
+from django.utils import timezone
+from datetime import timedelta
+from apps.bookings.models import Booking, BookingPassenger, BookingStatus, generate_ticket_code
+from apps.bookings.serializers import BookingSerializer, BookingCreateSerializer
+
+
+@pytest.mark.django_db
+class TestBookingModel:
+    """Unit tests for Booking model"""
+
+    def test_booking_creation(self, booking):
+        """Test booking is created correctly"""
+        assert booking.status == BookingStatus.PENDING
+        assert len(booking.seats) == 2
+        assert booking.total_amount == Decimal('36000.00')
+
+    def test_ticket_code_generation(self):
+        """Test ticket code generation"""
+        code = generate_ticket_code()
+        assert len(code) == 8
+        assert code.isalnum()
+
+    def test_ticket_code_uniqueness(self):
+        """Test ticket codes are unique"""
+        codes = [generate_ticket_code() for _ in range(100)]
+        assert len(codes) == len(set(codes))
+
+    def test_booking_str(self, booking):
+        """Test booking string representation"""
+        assert booking.ticket_code in str(booking)
+        assert booking.passenger_name in str(booking)
+
+
+@pytest.mark.django_db
+class TestBookingPassengerModel:
+    """Unit tests for BookingPassenger model"""
+
+    def test_create_passenger(self, booking):
+        """Test creating a booking passenger"""
+        passenger = BookingPassenger.objects.create(
+            booking=booking,
+            full_name='John Doe',
+            phone='08012345678',
+            email='john@example.com',
+            seat_number='1'
+        )
+        assert passenger.full_name == 'John Doe'
+        assert passenger.seat_number == '1'
+
+    def test_passenger_ordering(self, booking):
+        """Test passengers are ordered by seat number"""
+        BookingPassenger.objects.create(booking=booking, full_name='P2', phone='123', seat_number='2')
+        BookingPassenger.objects.create(booking=booking, full_name='P1', phone='123', seat_number='1')
+        passengers = list(booking.passengers.all())
+        assert passengers[0].seat_number == '1'
+        assert passengers[1].seat_number == '2'
+
+
+@pytest.mark.django_db
+class TestBookingCreateSerializer:
+    """Unit tests for booking creation serializer"""
+
+    def test_valid_booking_data(self, trip):
+        """Test valid booking creation data"""
+        data = {
+            'trip_id': str(trip.id),
+            'seats': ['1', '2'],
+            'passengers': [
+                {'full_name': 'John Doe', 'phone': '08012345678', 'email': 'john@example.com', 'seat_number': '1'},
+                {'full_name': 'Jane Doe', 'phone': '08087654321', 'email': 'jane@example.com', 'seat_number': '2'}
+            ],
+            'passenger_name': 'John Doe',
+            'passenger_phone': '08012345678',
+            'passenger_email': 'john@example.com'
+        }
+        serializer = BookingCreateSerializer(data=data)
+        assert serializer.is_valid()
+
+    def test_mismatched_seats_passengers(self, trip):
+        """Test validation error when seats don't match passengers"""
+        data = {
+            'trip_id': str(trip.id),
+            'seats': ['1', '2', '3'],  # 3 seats
+            'passengers': [
+                {'full_name': 'John Doe', 'phone': '08012345678', 'seat_number': '1'},
+                {'full_name': 'Jane Doe', 'phone': '08087654321', 'seat_number': '2'}
+            ],  # Only 2 passengers
+            'passenger_name': 'John Doe',
+            'passenger_phone': '08012345678',
+            'passenger_email': 'john@example.com'
+        }
+        serializer = BookingCreateSerializer(data=data)
+        assert not serializer.is_valid()
+```
+
+### 3. Trips Unit Tests (apps/trips/tests/test_unit.py)
+
+```python
+import pytest
+from django.utils import timezone
+from datetime import timedelta
+from apps.trips.models import Trip, TripStatus
+from apps.trips.serializers import TripSerializer, TripSearchSerializer
+
+
+@pytest.mark.django_db
+class TestTripModel:
+    """Unit tests for Trip model"""
+
+    def test_trip_creation(self, trip):
+        """Test trip is created correctly"""
+        assert trip.status == TripStatus.SCHEDULED
+        assert trip.available_seats == 48
+
+    def test_trip_company_property(self, trip, company):
+        """Test trip company property returns correct company"""
+        assert trip.company == company
+
+    def test_trip_str(self, trip):
+        """Test trip string representation"""
+        trip_str = str(trip)
+        assert 'Lagos' in trip_str or 'Abuja' in trip_str
+
+
+@pytest.mark.django_db
+class TestTripSerializer:
+    """Unit tests for trip serializers"""
+
+    def test_trip_serializer_fields(self, trip):
+        """Test trip serializer includes all required fields"""
+        serializer = TripSerializer(trip)
+        data = serializer.data
+        
+        required_fields = ['id', 'route', 'bus', 'departure_time', 'arrival_time', 
+                          'price', 'available_seats', 'status']
+        for field in required_fields:
+            assert field in data
+
+    def test_trip_search_serializer(self, trip):
+        """Test trip search serializer includes search-relevant fields"""
+        serializer = TripSearchSerializer(trip)
+        data = serializer.data
+        
+        assert 'origin' in data
+        assert 'destination' in data
+        assert 'company_name' in data
+        assert 'bus_type' in data
+```
+
+---
+
+## Integration Tests
+
+### 1. Authentication Integration Tests (apps/accounts/tests/test_integration.py)
+
+```python
+import pytest
+from rest_framework import status
+from django.urls import reverse
+
+
+@pytest.mark.django_db
+class TestAuthenticationFlow:
+    """Integration tests for authentication flow"""
+
+    def test_full_registration_flow(self, api_client):
+        """Test complete registration flow"""
+        # Register
+        register_data = {
+            'email': 'newuser@example.com',
+            'password': 'securepass123',
+            'confirm_password': 'securepass123',
+            'full_name': 'New User',
+            'phone': '08012345678'
+        }
+        response = api_client.post(reverse('register'), register_data)
+        assert response.status_code == status.HTTP_201_CREATED
+        assert 'tokens' in response.data
+        assert 'user' in response.data
+        
+        # Verify tokens are returned
+        assert 'access' in response.data['tokens']
+        assert 'refresh' in response.data['tokens']
+        
+        # Verify user data
+        assert response.data['user']['email'] == 'newuser@example.com'
+        assert 'passenger' in response.data['user']['roles']
+
+    def test_full_login_flow(self, api_client, create_user):
+        """Test complete login flow"""
+        create_user(email='login@example.com', password='testpass123')
+        
+        login_data = {'email': 'login@example.com', 'password': 'testpass123'}
+        response = api_client.post(reverse('login'), login_data)
+        
+        assert response.status_code == status.HTTP_200_OK
+        assert 'tokens' in response.data
+
+    def test_login_then_access_protected_route(self, api_client, create_user):
+        """Test login and access protected endpoint"""
+        create_user(email='protected@example.com', password='testpass123')
+        
+        # Login
+        login_data = {'email': 'protected@example.com', 'password': 'testpass123'}
+        login_response = api_client.post(reverse('login'), login_data)
+        token = login_response.data['tokens']['access']
+        
+        # Access protected route
+        api_client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
+        response = api_client.get(reverse('current-user'))
+        
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['email'] == 'protected@example.com'
+
+    def test_logout_invalidates_token(self, api_client, create_user):
+        """Test logout invalidates refresh token"""
+        create_user(email='logout@example.com', password='testpass123')
+        
+        # Login
+        login_data = {'email': 'logout@example.com', 'password': 'testpass123'}
+        login_response = api_client.post(reverse('login'), login_data)
+        access_token = login_response.data['tokens']['access']
+        refresh_token = login_response.data['tokens']['refresh']
+        
+        # Logout
+        api_client.credentials(HTTP_AUTHORIZATION=f'Bearer {access_token}')
+        logout_response = api_client.post(reverse('logout'), {'refresh_token': refresh_token})
+        
+        assert logout_response.status_code == status.HTTP_200_OK
+
+
+@pytest.mark.django_db
+class TestProfileIntegration:
+    """Integration tests for profile management"""
+
+    def test_get_and_update_profile(self, authenticated_client, passenger_user):
+        """Test getting and updating profile"""
+        # Get profile
+        response = authenticated_client.get(reverse('profile'))
+        assert response.status_code == status.HTTP_200_OK
+        
+        # Update profile
+        update_data = {'full_name': 'Updated Name', 'phone': '08099999999'}
+        response = authenticated_client.patch(reverse('profile'), update_data)
+        
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['full_name'] == 'Updated Name'
+        assert response.data['phone'] == '08099999999'
+```
+
+### 2. Booking Integration Tests (apps/bookings/tests/test_integration.py)
+
+```python
+import pytest
+from rest_framework import status
+from django.urls import reverse
+from django.utils import timezone
+from datetime import timedelta
+from apps.bookings.models import Booking, BookingStatus
+
+
+@pytest.mark.django_db
+class TestBookingFlow:
+    """Integration tests for complete booking flow"""
+
+    def test_complete_booking_flow(self, authenticated_client, trip, passenger_user):
+        """Test complete booking from search to confirmation"""
+        # Step 1: Search for trips
+        search_url = reverse('search-trips')
+        response = authenticated_client.get(search_url, {
+            'origin': 'Lagos',
+            'destination': 'Abuja',
+            'passengers': 2
+        })
+        assert response.status_code == status.HTTP_200_OK
+        assert len(response.data['results']) > 0
+        
+        trip_id = response.data['results'][0]['id']
+        
+        # Step 2: Get available seats
+        seats_url = reverse('get-trip-seats', kwargs={'trip_id': trip_id})
+        response = authenticated_client.get(seats_url)
+        assert response.status_code == status.HTTP_200_OK
+        
+        available_seats = [s['number'] for s in response.data['seats'] if s['is_available']][:2]
+        
+        # Step 3: Create booking
+        booking_data = {
+            'trip_id': str(trip_id),
+            'seats': available_seats,
+            'passengers': [
+                {'full_name': 'John Doe', 'phone': '08012345678', 
+                 'email': 'john@example.com', 'seat_number': available_seats[0]},
+                {'full_name': 'Jane Doe', 'phone': '08087654321', 
+                 'email': 'jane@example.com', 'seat_number': available_seats[1]}
+            ],
+            'passenger_name': 'John Doe',
+            'passenger_phone': '08012345678',
+            'passenger_email': 'john@example.com'
+        }
+        response = authenticated_client.post(reverse('create-booking'), booking_data, format='json')
+        assert response.status_code == status.HTTP_201_CREATED
+        
+        booking_id = response.data['id']
+        
+        # Step 4: Confirm payment
+        response = authenticated_client.post(
+            reverse('confirm-payment', kwargs={'booking_id': booking_id}),
+            {'payment_reference': 'PAY_12345'}
+        )
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['status'] == BookingStatus.CONFIRMED
+        
+        # Verify booking in my bookings
+        response = authenticated_client.get(reverse('my-bookings'))
+        assert response.status_code == status.HTTP_200_OK
+        assert any(b['id'] == str(booking_id) for b in response.data['results'])
+
+    def test_booking_reduces_available_seats(self, authenticated_client, trip):
+        """Test that booking reduces trip's available seats"""
+        initial_seats = trip.available_seats
+        
+        booking_data = {
+            'trip_id': str(trip.id),
+            'seats': ['1', '2'],
+            'passengers': [
+                {'full_name': 'P1', 'phone': '123', 'seat_number': '1'},
+                {'full_name': 'P2', 'phone': '456', 'seat_number': '2'}
+            ],
+            'passenger_name': 'P1',
+            'passenger_phone': '123',
+            'passenger_email': 'p1@example.com'
+        }
+        authenticated_client.post(reverse('create-booking'), booking_data, format='json')
+        
+        trip.refresh_from_db()
+        assert trip.available_seats == initial_seats - 2
+
+    def test_cancel_booking(self, authenticated_client, booking):
+        """Test booking cancellation"""
+        response = authenticated_client.post(
+            reverse('cancel-booking', kwargs={'booking_id': booking.id}),
+            {'reason': 'Change of plans'}
+        )
+        assert response.status_code == status.HTTP_200_OK
+        
+        booking.refresh_from_db()
+        assert booking.status == BookingStatus.CANCELLED
+        assert booking.cancellation_reason == 'Change of plans'
+
+    def test_cannot_double_book_seats(self, authenticated_client, trip):
+        """Test that same seats cannot be booked twice"""
+        booking_data = {
+            'trip_id': str(trip.id),
+            'seats': ['5'],
+            'passengers': [{'full_name': 'P1', 'phone': '123', 'seat_number': '5'}],
+            'passenger_name': 'P1',
+            'passenger_phone': '123',
+            'passenger_email': 'p1@example.com'
+        }
+        
+        # First booking should succeed
+        response = authenticated_client.post(reverse('create-booking'), booking_data, format='json')
+        assert response.status_code == status.HTTP_201_CREATED
+        
+        # Second booking for same seat should fail
+        response = authenticated_client.post(reverse('create-booking'), booking_data, format='json')
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+
+@pytest.mark.django_db
+class TestCompanyBookingsIntegration:
+    """Integration tests for company booking management"""
+
+    def test_company_can_view_their_bookings(self, company_admin_client, booking):
+        """Test company owner can view bookings for their trips"""
+        response = company_admin_client.get(reverse('company-bookings'))
+        assert response.status_code == status.HTTP_200_OK
+
+    def test_company_cannot_view_other_company_bookings(self, api_client, create_user, booking):
+        """Test company owner cannot see other company's bookings"""
+        other_company_user = create_user(email='other@company.com', role='company_admin')
+        api_client.force_authenticate(user=other_company_user)
+        
+        # Should return empty or not include the booking
+        response = api_client.get(reverse('company-bookings'))
+        assert response.status_code == status.HTTP_200_OK
+```
+
+### 3. Trips Integration Tests (apps/trips/tests/test_integration.py)
+
+```python
+import pytest
+from rest_framework import status
+from django.urls import reverse
+from django.utils import timezone
+from datetime import timedelta
+
+
+@pytest.mark.django_db
+class TestTripSearchIntegration:
+    """Integration tests for trip search functionality"""
+
+    def test_search_trips_by_origin_destination(self, api_client, trip):
+        """Test searching trips by origin and destination"""
+        response = api_client.get(reverse('search-trips'), {
+            'origin': 'Lagos',
+            'destination': 'Abuja'
+        })
+        assert response.status_code == status.HTTP_200_OK
+        assert len(response.data['results']) > 0
+
+    def test_search_trips_by_date(self, api_client, trip):
+        """Test searching trips by date"""
+        tomorrow = (timezone.now() + timedelta(days=1)).strftime('%Y-%m-%d')
+        response = api_client.get(reverse('search-trips'), {'date': tomorrow})
+        assert response.status_code == status.HTTP_200_OK
+
+    def test_search_excludes_past_trips(self, api_client, route, bus):
+        """Test that past trips are not returned in search"""
+        from apps.trips.models import Trip
+        
+        # Create a past trip
+        past_trip = Trip.objects.create(
+            route=route,
+            bus=bus,
+            departure_time=timezone.now() - timedelta(hours=1),
+            arrival_time=timezone.now() + timedelta(hours=7),
+            price=18000,
+            available_seats=48
+        )
+        
+        response = api_client.get(reverse('search-trips'))
+        trip_ids = [t['id'] for t in response.data['results']]
+        
+        assert str(past_trip.id) not in trip_ids
+
+    def test_search_excludes_trips_without_enough_seats(self, api_client, trip):
+        """Test that trips without enough seats are excluded"""
+        trip.available_seats = 1
+        trip.save()
+        
+        response = api_client.get(reverse('search-trips'), {'passengers': 5})
+        assert len(response.data['results']) == 0
+
+
+@pytest.mark.django_db
+class TestTripManagementIntegration:
+    """Integration tests for trip management by company"""
+
+    def test_company_crud_trip(self, company_admin_client, route, bus):
+        """Test complete CRUD for trips"""
+        # Create
+        trip_data = {
+            'route': str(route.id),
+            'bus': str(bus.id),
+            'departure_time': (timezone.now() + timedelta(days=2)).isoformat(),
+            'arrival_time': (timezone.now() + timedelta(days=2, hours=8)).isoformat(),
+            'price': 20000,
+            'available_seats': 48
+        }
+        response = company_admin_client.post(reverse('create-trip'), trip_data)
+        assert response.status_code == status.HTTP_201_CREATED
+        trip_id = response.data['id']
+        
+        # Read
+        response = company_admin_client.get(reverse('get-trip', kwargs={'trip_id': trip_id}))
+        assert response.status_code == status.HTTP_200_OK
+        
+        # Update
+        response = company_admin_client.patch(
+            reverse('update-trip', kwargs={'trip_id': trip_id}),
+            {'price': 22000}
+        )
+        assert response.status_code == status.HTTP_200_OK
+        assert float(response.data['price']) == 22000.00
+        
+        # Delete
+        response = company_admin_client.delete(
+            reverse('delete-trip', kwargs={'trip_id': trip_id})
+        )
+        assert response.status_code == status.HTTP_200_OK
+```
+
+---
+
+## System Integration Tests
+
+### End-to-End Test Suite (tests/test_e2e.py)
+
+```python
+import pytest
+from rest_framework import status
+from django.urls import reverse
+from django.utils import timezone
+from datetime import timedelta
+from apps.accounts.models import AppRole
+from apps.trips.models import TripStatus
+from apps.bookings.models import BookingStatus
+
+
+@pytest.mark.django_db
+class TestEndToEndPassengerJourney:
+    """E2E tests simulating complete passenger journey"""
+
+    def test_passenger_complete_journey(self, api_client, trip, cities):
+        """Test complete passenger journey from registration to booking"""
+        # 1. Register as new passenger
+        register_data = {
+            'email': 'passenger@journey.com',
+            'password': 'securepass123',
+            'confirm_password': 'securepass123',
+            'full_name': 'Journey Passenger',
+            'phone': '08012345678'
+        }
+        response = api_client.post(reverse('register'), register_data)
+        assert response.status_code == status.HTTP_201_CREATED
+        access_token = response.data['tokens']['access']
+        
+        # 2. Set auth header for subsequent requests
+        api_client.credentials(HTTP_AUTHORIZATION=f'Bearer {access_token}')
+        
+        # 3. Browse available cities
+        response = api_client.get(reverse('list-cities'))
+        assert response.status_code == status.HTTP_200_OK
+        
+        # 4. Search for trips
+        response = api_client.get(reverse('search-trips'), {
+            'origin': 'Lagos',
+            'destination': 'Abuja',
+            'passengers': 1
+        })
+        assert response.status_code == status.HTTP_200_OK
+        
+        if len(response.data['results']) > 0:
+            trip_id = response.data['results'][0]['id']
+            
+            # 5. View trip details
+            response = api_client.get(reverse('get-trip', kwargs={'trip_id': trip_id}))
+            assert response.status_code == status.HTTP_200_OK
+            
+            # 6. Check available seats
+            response = api_client.get(reverse('get-trip-seats', kwargs={'trip_id': trip_id}))
+            assert response.status_code == status.HTTP_200_OK
+            
+            available = [s for s in response.data['seats'] if s['is_available']]
+            if available:
+                seat = available[0]['number']
+                
+                # 7. Create booking
+                booking_data = {
+                    'trip_id': trip_id,
+                    'seats': [seat],
+                    'passengers': [{
+                        'full_name': 'Journey Passenger',
+                        'phone': '08012345678',
+                        'email': 'passenger@journey.com',
+                        'seat_number': seat
+                    }],
+                    'passenger_name': 'Journey Passenger',
+                    'passenger_phone': '08012345678',
+                    'passenger_email': 'passenger@journey.com'
+                }
+                response = api_client.post(reverse('create-booking'), booking_data, format='json')
+                assert response.status_code == status.HTTP_201_CREATED
+                booking_id = response.data['id']
+                
+                # 8. Confirm payment
+                response = api_client.post(
+                    reverse('confirm-payment', kwargs={'booking_id': booking_id}),
+                    {'payment_reference': 'PAY_E2E_123'}
+                )
+                assert response.status_code == status.HTTP_200_OK
+                
+                # 9. View my bookings
+                response = api_client.get(reverse('my-bookings'))
+                assert response.status_code == status.HTTP_200_OK
+                assert len(response.data['results']) >= 1
+
+
+@pytest.mark.django_db
+class TestEndToEndCompanyJourney:
+    """E2E tests simulating complete company journey"""
+
+    def test_company_complete_journey(self, api_client, cities):
+        """Test complete company journey from registration to trip creation"""
+        # 1. Register company owner
+        register_data = {
+            'email': 'company@journey.com',
+            'password': 'companypass123',
+            'confirm_password': 'companypass123',
+            'full_name': 'Company Owner',
+            'phone': '08099999999'
+        }
+        response = api_client.post(reverse('register'), register_data)
+        assert response.status_code == status.HTTP_201_CREATED
+        access_token = response.data['tokens']['access']
+        user_id = response.data['user']['id']
+        
+        api_client.credentials(HTTP_AUTHORIZATION=f'Bearer {access_token}')
+        
+        # 2. Assign company_admin role (normally done by admin)
+        from apps.accounts.models import UserRole, AppRole
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        user = User.objects.get(id=user_id)
+        UserRole.objects.create(user=user, role=AppRole.COMPANY_ADMIN)
+        
+        # 3. Create company
+        company_data = {
+            'name': 'Journey Transport',
+            'description': 'Best transport company'
+        }
+        response = api_client.post(reverse('create-company'), company_data)
+        assert response.status_code == status.HTTP_201_CREATED
+        company_id = response.data['id']
+        
+        # 4. Create bus
+        bus_data = {
+            'plate_number': 'JNY123AB',
+            'bus_type': 'luxury',
+            'total_seats': 48,
+            'amenities': ['AC', 'WiFi']
+        }
+        response = api_client.post(reverse('create-bus'), bus_data)
+        assert response.status_code == status.HTTP_201_CREATED
+        bus_id = response.data['id']
+        
+        # 5. Create route
+        route_data = {
+            'origin_city': str(cities['lagos'].id),
+            'destination_city': str(cities['abuja'].id),
+            'base_price': 15000,
+            'duration_hours': 8.5
+        }
+        response = api_client.post(reverse('create-route'), route_data)
+        assert response.status_code == status.HTTP_201_CREATED
+        route_id = response.data['id']
+        
+        # 6. Create trip
+        trip_data = {
+            'route': route_id,
+            'bus': bus_id,
+            'departure_time': (timezone.now() + timedelta(days=3)).isoformat(),
+            'arrival_time': (timezone.now() + timedelta(days=3, hours=8, minutes=30)).isoformat(),
+            'price': 18000,
+            'available_seats': 48
+        }
+        response = api_client.post(reverse('create-trip'), trip_data)
+        assert response.status_code == status.HTTP_201_CREATED
+        
+        # 7. View my trips
+        response = api_client.get(reverse('my-trips'))
+        assert response.status_code == status.HTTP_200_OK
+        assert len(response.data['results']) >= 1
+
+
+@pytest.mark.django_db
+class TestEndToEndAdminJourney:
+    """E2E tests simulating admin operations"""
+
+    def test_admin_complete_operations(self, admin_client, company, passenger_user):
+        """Test admin can perform all administrative operations"""
+        # 1. List all users
+        response = admin_client.get(reverse('list-users'))
+        assert response.status_code == status.HTTP_200_OK
+        
+        # 2. List all companies
+        response = admin_client.get(reverse('list-all-companies'))
+        assert response.status_code == status.HTTP_200_OK
+        
+        # 3. Verify a company
+        response = admin_client.patch(
+            reverse('verify-company', kwargs={'company_id': company.id}),
+            {'is_verified': True}
+        )
+        assert response.status_code == status.HTTP_200_OK
+        
+        # 4. View all bookings
+        response = admin_client.get(reverse('all-bookings'))
+        assert response.status_code == status.HTTP_200_OK
+        
+        # 5. Create a city
+        city_data = {'name': 'Kano', 'state': 'Kano'}
+        response = admin_client.post(reverse('create-city'), city_data)
+        assert response.status_code == status.HTTP_201_CREATED
+
+
+@pytest.mark.django_db
+class TestConcurrencyAndEdgeCases:
+    """Tests for concurrency and edge cases"""
+
+    def test_concurrent_booking_same_seat(self, api_client, create_user, trip):
+        """Test concurrent booking attempts for same seat"""
+        from concurrent.futures import ThreadPoolExecutor
+        import threading
+        
+        user1 = create_user(email='user1@concurrent.com')
+        user2 = create_user(email='user2@concurrent.com')
+        
+        results = []
+        lock = threading.Lock()
+        
+        def book_seat(user):
+            client = api_client.__class__()
+            client.force_authenticate(user=user)
+            
+            booking_data = {
+                'trip_id': str(trip.id),
+                'seats': ['10'],
+                'passengers': [{'full_name': 'Test', 'phone': '123', 'seat_number': '10'}],
+                'passenger_name': 'Test',
+                'passenger_phone': '123',
+                'passenger_email': f'{user.email}'
+            }
+            response = client.post(reverse('create-booking'), booking_data, format='json')
+            
+            with lock:
+                results.append(response.status_code)
+        
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            executor.submit(book_seat, user1)
+            executor.submit(book_seat, user2)
+            executor.shutdown(wait=True)
+        
+        # Only one should succeed
+        assert results.count(status.HTTP_201_CREATED) == 1
+        assert results.count(status.HTTP_400_BAD_REQUEST) == 1
+
+    def test_booking_hold_expiration(self, authenticated_client, trip):
+        """Test booking hold expiration behavior"""
+        from apps.bookings.models import Booking
+        
+        booking_data = {
+            'trip_id': str(trip.id),
+            'seats': ['15'],
+            'passengers': [{'full_name': 'Hold Test', 'phone': '123', 'seat_number': '15'}],
+            'passenger_name': 'Hold Test',
+            'passenger_phone': '123',
+            'passenger_email': 'hold@test.com'
+        }
+        response = authenticated_client.post(reverse('create-booking'), booking_data, format='json')
+        booking_id = response.data['id']
+        
+        # Simulate hold expiration
+        booking = Booking.objects.get(id=booking_id)
+        booking.hold_expires_at = timezone.now() - timedelta(minutes=1)
+        booking.save()
+        
+        # Run cleanup (would normally be a celery task)
+        from apps.bookings.tasks import expire_pending_bookings
+        expire_pending_bookings()
+        
+        booking.refresh_from_db()
+        assert booking.status == BookingStatus.EXPIRED
+```
+
+---
+
+## Test Database Configuration
+
+### pytest.ini
+
+```ini
+[pytest]
+DJANGO_SETTINGS_MODULE = bus_booking.settings
+python_files = test_*.py
+python_classes = Test*
+python_functions = test_*
+addopts = -v --tb=short --strict-markers
+markers =
+    slow: marks tests as slow
+    integration: marks tests as integration tests
+    e2e: marks tests as end-to-end tests
+```
+
+### settings_test.py
+
+```python
+"""
+Test settings for faster test execution
+"""
+from .settings import *
+
+# Use in-memory SQLite for faster tests
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': ':memory:',
+    }
+}
+
+# Disable password hashing for speed
+PASSWORD_HASHERS = [
+    'django.contrib.auth.hashers.MD5PasswordHasher',
+]
+
+# Disable email sending
+EMAIL_BACKEND = 'django.core.mail.backends.locmem.EmailBackend'
+
+# Disable throttling in tests
+REST_FRAMEWORK['DEFAULT_THROTTLE_CLASSES'] = []
+REST_FRAMEWORK['DEFAULT_THROTTLE_RATES'] = {}
+
+# Simpler JWT settings for testing
+SIMPLE_JWT['ACCESS_TOKEN_LIFETIME'] = timedelta(hours=24)
+```
+
+---
+
+## Running Tests
+
+### Test Commands
+
+```bash
+# Run all tests
+pytest
+
+# Run with coverage
+pytest --cov=apps --cov-report=html
+
+# Run only unit tests
+pytest -m "not integration and not e2e"
+
+# Run only integration tests
+pytest -m integration
+
+# Run only E2E tests
+pytest -m e2e
+
+# Run tests for specific app
+pytest apps/bookings/
+
+# Run with verbose output
+pytest -v
+
+# Run specific test file
+pytest apps/accounts/tests/test_unit.py
+
+# Run specific test class
+pytest apps/accounts/tests/test_unit.py::TestUserModel
+
+# Run specific test
+pytest apps/accounts/tests/test_unit.py::TestUserModel::test_create_user_success
+
+# Run tests in parallel (requires pytest-xdist)
+pytest -n auto
+
+# Generate JUnit XML report (for CI/CD)
+pytest --junitxml=test-results.xml
+```
+
+---
+
+## CI/CD Pipeline (GitHub Actions)
+
+### .github/workflows/tests.yml
+
+```yaml
+name: Django Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: test_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest pytest-django pytest-cov pytest-xdist
+    
+    - name: Run migrations
+      env:
+        DB_NAME: test_db
+        DB_USER: postgres
+        DB_PASSWORD: postgres
+        DB_HOST: localhost
+        DB_PORT: 5432
+        DJANGO_SECRET_KEY: test-secret-key
+      run: |
+        python manage.py migrate
+    
+    - name: Run tests
+      env:
+        DB_NAME: test_db
+        DB_USER: postgres
+        DB_PASSWORD: postgres
+        DB_HOST: localhost
+        DB_PORT: 5432
+        DJANGO_SECRET_KEY: test-secret-key
+      run: |
+        pytest --cov=apps --cov-report=xml --junitxml=test-results.xml -n auto
+    
+    - name: Upload coverage
+      uses: codecov/codecov-action@v3
+      with:
+        files: coverage.xml
+    
+    - name: Upload test results
+      uses: actions/upload-artifact@v3
+      with:
+        name: test-results
+        path: test-results.xml
+```
+
+---
+
+## Celery Tasks for Background Jobs
+
+### apps/bookings/tasks.py
+
+```python
+from celery import shared_task
+from django.utils import timezone
+from .models import Booking, BookingStatus
+
+
+@shared_task
+def expire_pending_bookings():
+    """Task to expire bookings that have passed their hold time"""
+    expired_bookings = Booking.objects.filter(
+        status=BookingStatus.PENDING,
+        hold_expires_at__lt=timezone.now()
+    )
+    
+    count = 0
+    for booking in expired_bookings:
+        booking.status = BookingStatus.EXPIRED
+        booking.save()
+        
+        # Restore available seats
+        booking.trip.available_seats += len(booking.seats)
+        booking.trip.save()
+        
+        count += 1
+    
+    return f'Expired {count} bookings'
+
+
+@shared_task
+def send_booking_confirmation_email(booking_id):
+    """Task to send booking confirmation email"""
+    from django.core.mail import send_mail
+    from django.conf import settings
+    
+    try:
+        booking = Booking.objects.select_related('trip__route__origin_city', 
+                                                  'trip__route__destination_city').get(id=booking_id)
+        
+        subject = f'Booking Confirmation - {booking.ticket_code}'
+        message = f'''
+        Dear {booking.passenger_name},
+        
+        Your booking has been confirmed!
+        
+        Ticket Code: {booking.ticket_code}
+        Route: {booking.trip.route.origin_city.name} → {booking.trip.route.destination_city.name}
+        Departure: {booking.trip.departure_time.strftime('%Y-%m-%d %H:%M')}
+        Seats: {', '.join(booking.seats)}
+        
+        Thank you for choosing our service!
+        '''
+        
+        send_mail(
+            subject=subject,
+            message=message,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[booking.passenger_email],
+            fail_silently=False
+        )
+        
+        return f'Email sent for booking {booking_id}'
+    except Booking.DoesNotExist:
+        return f'Booking {booking_id} not found'
+```
+
+---
+
 ## Notes for Integration
 
 1. **JWT Tokens**: The React frontend should store JWT tokens securely and include them in API requests via the `Authorization: Bearer <token>` header.
@@ -2244,5 +3549,9 @@ FLUTTERWAVE_SECRET_KEY=your-flutterwave-secret
 5. **Multi-Passenger Booking**: The booking creation endpoint accepts multiple passengers linked to individual seats.
 
 6. **Role-Based Access**: Three roles are supported - `admin`, `company_admin`, and `passenger`.
+
+7. **Test Coverage**: Aim for >80% test coverage. Unit tests for models/serializers, integration tests for API flows, E2E tests for complete user journeys.
+
+8. **Celery Tasks**: Background tasks handle booking expiration and email notifications.
 
 This structure mirrors the current Supabase schema and provides a complete reference for future Django integration.
