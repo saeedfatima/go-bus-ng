@@ -1,6 +1,54 @@
 # Django Backend Structure for Bus Booking System
 
-This document outlines the complete Django REST Framework backend structure for future integration.
+This document outlines the complete Django REST Framework backend structure for future integration. The setup uses SQLite for simplicity during development with easy migration to PostgreSQL for production.
+
+---
+
+## Quick Start (5 minutes)
+
+### Prerequisites
+- Python 3.10+
+- pip (Python package manager)
+
+### Installation
+
+```bash
+# 1. Create project directory
+mkdir bus_booking_backend && cd bus_booking_backend
+
+# 2. Create virtual environment
+python -m venv venv
+source venv/bin/activate  # Linux/Mac
+# or
+venv\Scripts\activate     # Windows
+
+# 3. Install dependencies
+pip install -r requirements.txt
+
+# 4. Create environment file
+cp .env.example .env
+# Edit .env with your DJANGO_SECRET_KEY
+
+# 5. Run migrations
+python manage.py migrate
+
+# 6. Create superuser (optional)
+python manage.py createsuperuser
+
+# 7. Load sample data (optional)
+python manage.py loaddata fixtures/sample_data.json
+
+# 8. Run development server
+python manage.py runserver
+```
+
+### Access Points
+- **API Base**: http://localhost:8000/api/v1/
+- **Admin Panel**: http://localhost:8000/admin/
+- **Swagger Docs**: http://localhost:8000/swagger/
+- **ReDoc**: http://localhost:8000/redoc/
+
+---
 
 ## Project Structure
 
@@ -8,10 +56,13 @@ This document outlines the complete Django REST Framework backend structure for 
 bus_booking_backend/
 ├── manage.py
 ├── requirements.txt
-├── .env
+├── .env.example
+├── pytest.ini
+├── db.sqlite3                      # SQLite database file
 ├── bus_booking/                    # Main project directory
 │   ├── __init__.py
 │   ├── settings.py
+│   ├── settings_test.py
 │   ├── urls.py
 │   ├── wsgi.py
 │   └── asgi.py
@@ -26,6 +77,9 @@ bus_booking_backend/
 │   │   ├── views.py
 │   │   ├── urls.py
 │   │   ├── permissions.py
+│   │   ├── management/
+│   │   │   └── commands/
+│   │   │       └── create_default_roles.py
 │   │   └── tests.py
 │   ├── companies/                  # Company management
 │   │   ├── __init__.py
@@ -72,6 +126,10 @@ bus_booking_backend/
 │   │   ├── views.py
 │   │   ├── urls.py
 │   │   ├── pagination.py
+│   │   ├── management/
+│   │   │   └── commands/
+│   │   │       ├── expire_bookings.py
+│   │   │       └── send_reminders.py
 │   │   └── tests.py
 │   └── cities/                     # City management
 │       ├── __init__.py
@@ -82,10 +140,17 @@ bus_booking_backend/
 │       ├── views.py
 │       ├── urls.py
 │       └── tests.py
-└── utils/
-    ├── __init__.py
-    ├── pagination.py
-    └── permissions.py
+├── utils/
+│   ├── __init__.py
+│   ├── pagination.py
+│   └── permissions.py
+├── fixtures/
+│   └── sample_data.json
+└── tests/
+    ├── conftest.py
+    ├── test_unit/
+    ├── test_integration/
+    └── test_e2e/
 ```
 
 ---
@@ -100,11 +165,14 @@ django-filter>=23.5
 djangorestframework-simplejwt>=5.3.0
 drf-yasg>=1.21.7
 python-dotenv>=1.0.0
-psycopg2-binary>=2.9.9
 Pillow>=10.1.0
-celery>=5.3.4
-redis>=5.0.1
 gunicorn>=21.2.0
+
+# Testing
+pytest>=7.4.0
+pytest-django>=4.5.0
+pytest-cov>=4.1.0
+pytest-xdist>=3.5.0
 ```
 
 ---
@@ -121,9 +189,9 @@ load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = os.getenv('DJANGO_SECRET_KEY')
-DEBUG = os.getenv('DEBUG', 'False') == 'True'
-ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '').split(',')
+SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'your-dev-secret-key-change-in-production')
+DEBUG = os.getenv('DEBUG', 'True') == 'True'
+ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -159,6 +227,26 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
+ROOT_URLCONF = 'bus_booking.urls'
+
+TEMPLATES = [
+    {
+        'BACKEND': 'django.template.backends.django.DjangoTemplates',
+        'DIRS': [],
+        'APP_DIRS': True,
+        'OPTIONS': {
+            'context_processors': [
+                'django.template.context_processors.debug',
+                'django.template.context_processors.request',
+                'django.contrib.auth.context_processors.auth',
+                'django.contrib.messages.context_processors.messages',
+            ],
+        },
+    },
+]
+
+WSGI_APPLICATION = 'bus_booking.wsgi.application'
+
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework_simplejwt.authentication.JWTAuthentication',
@@ -183,18 +271,65 @@ SIMPLE_JWT = {
 
 AUTH_USER_MODEL = 'accounts.User'
 
+# Database - SQLite (default for development)
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.getenv('DB_NAME'),
-        'USER': os.getenv('DB_USER'),
-        'PASSWORD': os.getenv('DB_PASSWORD'),
-        'HOST': os.getenv('DB_HOST'),
-        'PORT': os.getenv('DB_PORT', '5432'),
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',
     }
 }
 
-CORS_ALLOWED_ORIGINS = os.getenv('CORS_ORIGINS', '').split(',')
+# CORS
+CORS_ALLOWED_ORIGINS = os.getenv('CORS_ORIGINS', 'http://localhost:3000,http://localhost:5173,http://localhost:8080').split(',')
+CORS_ALLOW_CREDENTIALS = True
+
+# Static files
+STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+# Media files
+MEDIA_URL = 'media/'
+MEDIA_ROOT = BASE_DIR / 'media'
+
+# Default primary key field type
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# Email (optional)
+EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'  # Dev
+# EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'  # Production
+EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
+EMAIL_PORT = int(os.getenv('EMAIL_PORT', 587))
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
+EMAIL_USE_TLS = True
+DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'noreply@busbooking.com')
+```
+
+---
+
+## Test Settings (bus_booking/settings_test.py)
+
+```python
+from .settings import *
+
+# Use in-memory SQLite for faster tests
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': ':memory:',
+    }
+}
+
+# Faster password hashing for tests
+PASSWORD_HASHERS = [
+    'django.contrib.auth.hashers.MD5PasswordHasher',
+]
+
+# Disable debug mode
+DEBUG = False
+
+# Disable logging during tests
+LOGGING = {}
 ```
 
 ---
@@ -338,7 +473,6 @@ class Company(models.Model):
 ```python
 import uuid
 from django.db import models
-from django.contrib.postgres.fields import ArrayField
 from apps.companies.models import Company
 
 
@@ -354,7 +488,8 @@ class Bus(models.Model):
     plate_number = models.CharField(max_length=20, unique=True)
     bus_type = models.CharField(max_length=20, choices=BusType.choices, default=BusType.STANDARD)
     total_seats = models.IntegerField(default=48)
-    amenities = ArrayField(models.CharField(max_length=50), blank=True, default=list)
+    # JSONField is database-agnostic (works with SQLite, PostgreSQL, MySQL)
+    amenities = models.JSONField(default=list, blank=True)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -444,7 +579,6 @@ import uuid
 import random
 import string
 from django.db import models
-from django.contrib.postgres.fields import ArrayField
 from apps.accounts.models import User
 from apps.trips.models import Trip
 
@@ -464,7 +598,8 @@ class Booking(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     trip = models.ForeignKey(Trip, on_delete=models.CASCADE, related_name='bookings')
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='bookings')
-    seats = ArrayField(models.CharField(max_length=5))
+    # JSONField is database-agnostic (works with SQLite, PostgreSQL, MySQL)
+    seats = models.JSONField(default=list)
     total_amount = models.DecimalField(max_digits=10, decimal_places=2)
     status = models.CharField(max_length=20, choices=BookingStatus.choices, default=BookingStatus.PENDING)
     ticket_code = models.CharField(max_length=20, unique=True, default=generate_ticket_code)
@@ -498,7 +633,7 @@ class BookingPassenger(models.Model):
 
     class Meta:
         db_table = 'booking_passengers'
-        ordering = ['seat_number']
+        unique_together = ['booking', 'seat_number']
 
     def __str__(self):
         return f"{self.full_name} - Seat {self.seat_number}"
@@ -516,38 +651,30 @@ from django.contrib.auth import authenticate
 from .models import User, UserRole, Profile, AppRole
 
 
-class UserSerializer(serializers.ModelSerializer):
-    roles = serializers.SerializerMethodField()
-
-    class Meta:
-        model = User
-        fields = ['id', 'email', 'full_name', 'phone', 'roles', 'created_at', 'updated_at']
-        read_only_fields = ['id', 'created_at', 'updated_at']
-
-    def get_roles(self, obj):
-        return [role.role for role in obj.roles.all()]
-
-
-class UserRegistrationSerializer(serializers.ModelSerializer):
+class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=8)
-    confirm_password = serializers.CharField(write_only=True)
+    password_confirm = serializers.CharField(write_only=True)
 
     class Meta:
         model = User
-        fields = ['email', 'password', 'confirm_password', 'full_name', 'phone']
+        fields = ['email', 'password', 'password_confirm', 'full_name', 'phone']
 
     def validate(self, data):
-        if data['password'] != data['confirm_password']:
-            raise serializers.ValidationError({'confirm_password': 'Passwords do not match'})
+        if data['password'] != data['password_confirm']:
+            raise serializers.ValidationError({'password_confirm': 'Passwords do not match'})
         return data
 
     def create(self, validated_data):
-        validated_data.pop('confirm_password')
+        validated_data.pop('password_confirm')
         user = User.objects.create_user(**validated_data)
-        # Create default passenger role
+        # Assign default passenger role
         UserRole.objects.create(user=user, role=AppRole.PASSENGER)
         # Create profile
-        Profile.objects.create(user=user, full_name=user.full_name, phone=user.phone)
+        Profile.objects.create(
+            user=user,
+            full_name=user.full_name,
+            phone=user.phone
+        )
         return user
 
 
@@ -560,24 +687,36 @@ class LoginSerializer(serializers.Serializer):
         if not user:
             raise serializers.ValidationError('Invalid credentials')
         if not user.is_active:
-            raise serializers.ValidationError('User account is disabled')
+            raise serializers.ValidationError('Account is disabled')
         data['user'] = user
         return data
 
 
+class UserSerializer(serializers.ModelSerializer):
+    roles = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = ['id', 'email', 'full_name', 'phone', 'is_active', 'created_at', 'updated_at']
+
+    def get_roles(self, obj):
+        return [role.role for role in obj.roles.all()]
+
+
 class UserRoleSerializer(serializers.ModelSerializer):
+    user_id = serializers.UUIDField(source='user.id', read_only=True)
+
     class Meta:
         model = UserRole
-        fields = ['id', 'user', 'role']
+        fields = ['id', 'user_id', 'role']
 
 
 class ProfileSerializer(serializers.ModelSerializer):
-    email = serializers.EmailField(source='user.email', read_only=True)
+    user_id = serializers.UUIDField(source='user.id', read_only=True)
 
     class Meta:
         model = Profile
-        fields = ['id', 'email', 'full_name', 'phone', 'created_at', 'updated_at']
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        fields = ['id', 'user_id', 'full_name', 'phone', 'created_at', 'updated_at']
 ```
 
 ### 2. Cities Serializers (apps/cities/serializers.py)
@@ -591,7 +730,6 @@ class CitySerializer(serializers.ModelSerializer):
     class Meta:
         model = City
         fields = ['id', 'name', 'state', 'created_at']
-        read_only_fields = ['id', 'created_at']
 ```
 
 ### 3. Companies Serializers (apps/companies/serializers.py)
@@ -602,47 +740,48 @@ from .models import Company
 
 
 class CompanySerializer(serializers.ModelSerializer):
-    owner_email = serializers.EmailField(source='owner.email', read_only=True)
+    owner_id = serializers.UUIDField(source='owner.id', read_only=True)
 
     class Meta:
         model = Company
         fields = [
             'id', 'name', 'logo_url', 'description', 'rating',
-            'total_trips', 'is_verified', 'owner', 'owner_email',
-            'created_at', 'updated_at'
+            'total_trips', 'is_verified', 'owner_id', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'rating', 'total_trips', 'is_verified', 'created_at', 'updated_at']
 
 
-class CompanyListSerializer(serializers.ModelSerializer):
+class CompanyCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Company
-        fields = ['id', 'name', 'logo_url', 'rating', 'total_trips', 'is_verified']
+        fields = ['name', 'logo_url', 'description']
+
+    def create(self, validated_data):
+        validated_data['owner'] = self.context['request'].user
+        return super().create(validated_data)
 ```
 
 ### 4. Buses Serializers (apps/buses/serializers.py)
 
 ```python
 from rest_framework import serializers
-from .models import Bus
+from .models import Bus, BusType
 
 
 class BusSerializer(serializers.ModelSerializer):
-    company_name = serializers.CharField(source='company.name', read_only=True)
+    company_id = serializers.UUIDField(source='company.id', read_only=True)
 
     class Meta:
         model = Bus
         fields = [
-            'id', 'company', 'company_name', 'plate_number', 'bus_type',
+            'id', 'company_id', 'plate_number', 'bus_type',
             'total_seats', 'amenities', 'is_active', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at']
 
 
-class BusListSerializer(serializers.ModelSerializer):
+class BusCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Bus
-        fields = ['id', 'plate_number', 'bus_type', 'total_seats', 'amenities', 'is_active']
+        fields = ['plate_number', 'bus_type', 'total_seats', 'amenities']
 ```
 
 ### 5. Routes Serializers (apps/routes/serializers.py)
@@ -654,27 +793,19 @@ from apps.cities.serializers import CitySerializer
 
 
 class RouteSerializer(serializers.ModelSerializer):
-    origin_city_detail = CitySerializer(source='origin_city', read_only=True)
-    destination_city_detail = CitySerializer(source='destination_city', read_only=True)
-    company_name = serializers.CharField(source='company.name', read_only=True)
+    origin_city = CitySerializer(read_only=True)
+    destination_city = CitySerializer(read_only=True)
+    origin_city_id = serializers.UUIDField(write_only=True)
+    destination_city_id = serializers.UUIDField(write_only=True)
+    company_id = serializers.UUIDField(source='company.id', read_only=True)
 
     class Meta:
         model = Route
         fields = [
-            'id', 'company', 'company_name', 'origin_city', 'destination_city',
-            'origin_city_detail', 'destination_city_detail', 'base_price',
-            'duration_hours', 'is_active', 'created_at', 'updated_at'
+            'id', 'company_id', 'origin_city', 'destination_city',
+            'origin_city_id', 'destination_city_id',
+            'base_price', 'duration_hours', 'is_active', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at']
-
-
-class RouteListSerializer(serializers.ModelSerializer):
-    origin = serializers.CharField(source='origin_city.name')
-    destination = serializers.CharField(source='destination_city.name')
-
-    class Meta:
-        model = Route
-        fields = ['id', 'origin', 'destination', 'base_price', 'duration_hours', 'is_active']
 ```
 
 ### 6. Trips Serializers (apps/trips/serializers.py)
@@ -683,40 +814,46 @@ class RouteListSerializer(serializers.ModelSerializer):
 from rest_framework import serializers
 from .models import Trip
 from apps.routes.serializers import RouteSerializer
-from apps.buses.serializers import BusListSerializer
+from apps.buses.serializers import BusSerializer
+from apps.companies.serializers import CompanySerializer
 
 
 class TripSerializer(serializers.ModelSerializer):
-    route_detail = RouteSerializer(source='route', read_only=True)
-    bus_detail = BusListSerializer(source='bus', read_only=True)
-    company_name = serializers.CharField(source='route.company.name', read_only=True)
-    company_id = serializers.UUIDField(source='route.company.id', read_only=True)
+    route = RouteSerializer(read_only=True)
+    bus = BusSerializer(read_only=True)
+    company = serializers.SerializerMethodField()
+    route_id = serializers.UUIDField(write_only=True)
+    bus_id = serializers.UUIDField(write_only=True)
 
     class Meta:
         model = Trip
         fields = [
-            'id', 'route', 'route_detail', 'bus', 'bus_detail', 'company_name',
-            'company_id', 'departure_time', 'arrival_time', 'price',
+            'id', 'route', 'bus', 'company', 'route_id', 'bus_id',
+            'departure_time', 'arrival_time', 'price',
             'available_seats', 'status', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def get_company(self, obj):
+        if obj.route and obj.route.company:
+            return CompanySerializer(obj.route.company).data
+        return None
 
 
 class TripSearchSerializer(serializers.ModelSerializer):
-    origin = serializers.CharField(source='route.origin_city.name')
-    destination = serializers.CharField(source='route.destination_city.name')
+    """Lightweight serializer for search results"""
+    origin_city = serializers.CharField(source='route.origin_city.name')
+    destination_city = serializers.CharField(source='route.destination_city.name')
     company_name = serializers.CharField(source='route.company.name')
     company_logo = serializers.URLField(source='route.company.logo_url')
-    company_rating = serializers.DecimalField(source='route.company.rating', max_digits=3, decimal_places=2)
     bus_type = serializers.CharField(source='bus.bus_type')
-    amenities = serializers.ListField(source='bus.amenities')
+    amenities = serializers.JSONField(source='bus.amenities')
 
     class Meta:
         model = Trip
         fields = [
-            'id', 'origin', 'destination', 'company_name', 'company_logo',
-            'company_rating', 'departure_time', 'arrival_time', 'price',
-            'available_seats', 'bus_type', 'amenities', 'status'
+            'id', 'origin_city', 'destination_city', 'company_name', 'company_logo',
+            'departure_time', 'arrival_time', 'price', 'available_seats',
+            'bus_type', 'amenities', 'status'
         ]
 ```
 
@@ -729,54 +866,65 @@ from apps.trips.serializers import TripSerializer
 
 
 class BookingPassengerSerializer(serializers.ModelSerializer):
+    booking_id = serializers.UUIDField(source='booking.id', read_only=True)
+
     class Meta:
         model = BookingPassenger
-        fields = ['id', 'full_name', 'phone', 'email', 'nin', 'seat_number', 'created_at']
-        read_only_fields = ['id', 'created_at']
+        fields = ['id', 'booking_id', 'full_name', 'phone', 'email', 'nin', 'seat_number', 'created_at']
 
 
 class BookingSerializer(serializers.ModelSerializer):
+    trip = TripSerializer(read_only=True)
     passengers = BookingPassengerSerializer(many=True, read_only=True)
-    trip_detail = TripSerializer(source='trip', read_only=True)
+    user_id = serializers.UUIDField(source='user.id', read_only=True)
+    trip_id = serializers.UUIDField(write_only=True)
 
     class Meta:
         model = Booking
         fields = [
-            'id', 'trip', 'trip_detail', 'user', 'seats', 'total_amount',
-            'status', 'ticket_code', 'passenger_name', 'passenger_phone',
-            'passenger_email', 'passengers', 'hold_expires_at',
-            'payment_completed_at', 'cancelled_at', 'cancellation_reason',
-            'created_at', 'updated_at'
+            'id', 'trip', 'trip_id', 'user_id', 'seats', 'total_amount', 'status',
+            'ticket_code', 'passenger_name', 'passenger_phone', 'passenger_email',
+            'hold_expires_at', 'payment_completed_at', 'cancelled_at',
+            'cancellation_reason', 'passengers', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'ticket_code', 'created_at', 'updated_at']
+        read_only_fields = ['ticket_code', 'status', 'hold_expires_at']
 
 
-class BookingCreateSerializer(serializers.Serializer):
-    trip_id = serializers.UUIDField()
-    seats = serializers.ListField(child=serializers.CharField(max_length=5), min_length=1)
-    passengers = BookingPassengerSerializer(many=True)
-    passenger_name = serializers.CharField(max_length=255)
-    passenger_phone = serializers.CharField(max_length=20)
-    passenger_email = serializers.EmailField()
-
-    def validate(self, data):
-        if len(data['seats']) != len(data['passengers']):
-            raise serializers.ValidationError('Number of seats must match number of passengers')
-        return data
-
-
-class BookingListSerializer(serializers.ModelSerializer):
-    origin = serializers.CharField(source='trip.route.origin_city.name')
-    destination = serializers.CharField(source='trip.route.destination_city.name')
-    departure_time = serializers.DateTimeField(source='trip.departure_time')
-    company_name = serializers.CharField(source='trip.route.company.name')
+class BookingCreateSerializer(serializers.ModelSerializer):
+    passengers = BookingPassengerSerializer(many=True, required=False)
 
     class Meta:
         model = Booking
         fields = [
-            'id', 'ticket_code', 'origin', 'destination', 'departure_time',
-            'company_name', 'seats', 'total_amount', 'status', 'created_at'
+            'trip', 'seats', 'passenger_name', 'passenger_phone',
+            'passenger_email', 'passengers'
         ]
+
+    def create(self, validated_data):
+        passengers_data = validated_data.pop('passengers', [])
+        trip = validated_data['trip']
+        seats = validated_data['seats']
+        
+        # Calculate total amount
+        validated_data['total_amount'] = trip.price * len(seats)
+        validated_data['user'] = self.context['request'].user
+        
+        # Set hold expiration (15 minutes from now)
+        from django.utils import timezone
+        from datetime import timedelta
+        validated_data['hold_expires_at'] = timezone.now() + timedelta(minutes=15)
+        
+        booking = Booking.objects.create(**validated_data)
+        
+        # Create passengers
+        for passenger_data in passengers_data:
+            BookingPassenger.objects.create(booking=booking, **passenger_data)
+        
+        # Update available seats
+        trip.available_seats -= len(seats)
+        trip.save()
+        
+        return booking
 ```
 
 ---
@@ -796,8 +944,9 @@ class StandardResultsPagination(PageNumberPagination):
     def get_paginated_response(self, data):
         return Response({
             'count': self.page.paginator.count,
-            'total_pages': self.page.paginator.num_pages,
             'current_page': self.page.number,
+            'page_size': self.get_page_size(self.request),
+            'total_pages': self.page.paginator.num_pages,
             'next': self.get_next_link(),
             'previous': self.get_previous_link(),
             'results': data
@@ -805,32 +954,19 @@ class StandardResultsPagination(PageNumberPagination):
 
 
 class SeatsPagination(PageNumberPagination):
-    """Pagination for seat selection in booking page"""
-    page_size = 12  # Show 12 seats per page (good for grid layout)
-    page_size_query_param = 'page_size'
-    max_page_size = 48
-
-    def get_paginated_response(self, data):
-        return Response({
-            'count': self.page.paginator.count,
-            'total_pages': self.page.paginator.num_pages,
-            'current_page': self.page.number,
-            'next': self.get_next_link(),
-            'previous': self.get_previous_link(),
-            'seats': data
-        })
-
-
-class BookingsPagination(PageNumberPagination):
-    """Pagination for bookings list"""
-    page_size = 20
+    page_size = 50
     page_size_query_param = 'page_size'
     max_page_size = 100
 
 
+class BookingsPagination(PageNumberPagination):
+    page_size = 20
+    page_size_query_param = 'page_size'
+    max_page_size = 50
+
+
 class TripsPagination(PageNumberPagination):
-    """Pagination for trip search results"""
-    page_size = 15
+    page_size = 10
     page_size_query_param = 'page_size'
     max_page_size = 50
 ```
@@ -840,54 +976,49 @@ class TripsPagination(PageNumberPagination):
 ## Permissions (utils/permissions.py)
 
 ```python
-from rest_framework import permissions
+from rest_framework.permissions import BasePermission
 from apps.accounts.models import AppRole
 
 
-class IsAdmin(permissions.BasePermission):
-    """Allow access only to admin users"""
-
+class IsAdmin(BasePermission):
+    """Permission for admin users only"""
+    
     def has_permission(self, request, view):
         if not request.user.is_authenticated:
             return False
         return request.user.roles.filter(role=AppRole.ADMIN).exists()
 
 
-class IsCompanyOwner(permissions.BasePermission):
-    """Allow access only to company owners"""
-
+class IsCompanyOwner(BasePermission):
+    """Permission for company owners"""
+    
     def has_permission(self, request, view):
         if not request.user.is_authenticated:
             return False
         return request.user.roles.filter(role=AppRole.COMPANY_ADMIN).exists()
 
-    def has_object_permission(self, request, view, obj):
-        # Check if user owns the company
-        if hasattr(obj, 'owner'):
-            return obj.owner == request.user
-        if hasattr(obj, 'company'):
-            return obj.company.owner == request.user
-        if hasattr(obj, 'route'):
-            return obj.route.company.owner == request.user
-        return False
 
-
-class IsOwnerOrAdmin(permissions.BasePermission):
-    """Allow access to owner or admin"""
-
+class IsOwnerOrAdmin(BasePermission):
+    """Permission for resource owner or admin"""
+    
     def has_object_permission(self, request, view, obj):
         if request.user.roles.filter(role=AppRole.ADMIN).exists():
             return True
-        if hasattr(obj, 'user'):
-            return obj.user == request.user
+        
+        # Check ownership based on object type
         if hasattr(obj, 'owner'):
             return obj.owner == request.user
+        if hasattr(obj, 'user'):
+            return obj.user == request.user
+        if hasattr(obj, 'company'):
+            return obj.company.owner == request.user
+        
         return False
 
 
-class IsPassenger(permissions.BasePermission):
-    """Allow access to passengers"""
-
+class IsPassenger(BasePermission):
+    """Permission for passengers"""
+    
     def has_permission(self, request, view):
         if not request.user.is_authenticated:
             return False
@@ -896,42 +1027,37 @@ class IsPassenger(permissions.BasePermission):
 
 ---
 
-## Views (Function-Based with @api_view)
+## Views
 
 ### 1. Accounts Views (apps/accounts/views.py)
 
 ```python
+from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
-from rest_framework import status
 from rest_framework_simplejwt.tokens import RefreshToken
-from django.contrib.auth import get_user_model
-from .models import UserRole, Profile, AppRole
+
+from .models import User, UserRole, Profile, AppRole
 from .serializers import (
-    UserSerializer, UserRegistrationSerializer, LoginSerializer,
+    RegisterSerializer, LoginSerializer, UserSerializer,
     UserRoleSerializer, ProfileSerializer
 )
 from utils.permissions import IsAdmin
-from utils.pagination import StandardResultsPagination
-
-User = get_user_model()
 
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def register(request):
     """Register a new user"""
-    serializer = UserRegistrationSerializer(data=request.data)
+    serializer = RegisterSerializer(data=request.data)
     if serializer.is_valid():
         user = serializer.save()
         refresh = RefreshToken.for_user(user)
         return Response({
-            'user': UserSerializer(user).data,
-            'tokens': {
-                'refresh': str(refresh),
-                'access': str(refresh.access_token),
-            }
+            'access': str(refresh.access_token),
+            'refresh': str(refresh),
+            'user': UserSerializer(user).data
         }, status=status.HTTP_201_CREATED)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -939,18 +1065,16 @@ def register(request):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def login(request):
-    """Login user and return tokens"""
+    """Login user and return JWT tokens"""
     serializer = LoginSerializer(data=request.data)
     if serializer.is_valid():
         user = serializer.validated_data['user']
         refresh = RefreshToken.for_user(user)
         return Response({
-            'user': UserSerializer(user).data,
-            'tokens': {
-                'refresh': str(refresh),
-                'access': str(refresh.access_token),
-            }
-        }, status=status.HTTP_200_OK)
+            'access': str(refresh.access_token),
+            'refresh': str(refresh),
+            'user': UserSerializer(user).data
+        })
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -959,20 +1083,20 @@ def login(request):
 def logout(request):
     """Logout user by blacklisting refresh token"""
     try:
-        refresh_token = request.data.get('refresh_token')
-        token = RefreshToken(refresh_token)
-        token.blacklist()
-        return Response({'message': 'Successfully logged out'}, status=status.HTTP_200_OK)
-    except Exception as e:
-        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        refresh_token = request.data.get('refresh')
+        if refresh_token:
+            token = RefreshToken(refresh_token)
+            token.blacklist()
+        return Response({'message': 'Logged out successfully'})
+    except Exception:
+        return Response({'message': 'Logged out'})
 
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-def get_current_user(request):
+def me(request):
     """Get current authenticated user"""
-    serializer = UserSerializer(request.user)
-    return Response(serializer.data, status=status.HTTP_200_OK)
+    return Response(UserSerializer(request.user).data)
 
 
 @api_view(['GET', 'PUT', 'PATCH'])
@@ -980,36 +1104,52 @@ def get_current_user(request):
 def profile(request):
     """Get or update user profile"""
     try:
-        profile = Profile.objects.get(user=request.user)
+        user_profile = Profile.objects.get(user=request.user)
     except Profile.DoesNotExist:
-        profile = Profile.objects.create(user=request.user)
+        user_profile = Profile.objects.create(user=request.user)
 
     if request.method == 'GET':
-        serializer = ProfileSerializer(profile)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(ProfileSerializer(user_profile).data)
 
-    serializer = ProfileSerializer(profile, data=request.data, partial=True)
+    serializer = ProfileSerializer(user_profile, data=request.data, partial=True)
     if serializer.is_valid():
         serializer.save()
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.data)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def list_user_roles(request):
+    """List roles for a user"""
+    user_id = request.query_params.get('user_id')
+    if not user_id:
+        return Response({'error': 'user_id required'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    roles = UserRole.objects.filter(user_id=user_id)
+    return Response(UserRoleSerializer(roles, many=True).data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def check_user_role(request):
+    """Check if user has specific role"""
+    user_id = request.query_params.get('user_id')
+    role = request.query_params.get('role')
+    
+    if not user_id or not role:
+        return Response({'error': 'user_id and role required'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    has_role = UserRole.objects.filter(user_id=user_id, role=role).exists()
+    return Response({'has_role': has_role})
 
 
 @api_view(['GET'])
 @permission_classes([IsAdmin])
 def list_users(request):
     """List all users (Admin only)"""
-    paginator = StandardResultsPagination()
     users = User.objects.all()
-    
-    # Search filter
-    search = request.query_params.get('search', '')
-    if search:
-        users = users.filter(email__icontains=search) | users.filter(full_name__icontains=search)
-    
-    result_page = paginator.paginate_queryset(users, request)
-    serializer = UserSerializer(result_page, many=True)
-    return paginator.get_paginated_response(serializer.data)
+    return Response(UserSerializer(users, many=True).data)
 
 
 @api_view(['POST'])
@@ -1018,20 +1158,20 @@ def assign_role(request):
     """Assign role to user (Admin only)"""
     user_id = request.data.get('user_id')
     role = request.data.get('role')
-
-    if role not in [choice[0] for choice in AppRole.choices]:
+    
+    if not user_id or not role:
+        return Response({'error': 'user_id and role required'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    if role not in [r[0] for r in AppRole.choices]:
         return Response({'error': 'Invalid role'}, status=status.HTTP_400_BAD_REQUEST)
-
+    
     try:
         user = User.objects.get(id=user_id)
     except User.DoesNotExist:
         return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
-
+    
     user_role, created = UserRole.objects.get_or_create(user=user, role=role)
-    if not created:
-        return Response({'message': 'User already has this role'}, status=status.HTTP_200_OK)
-
-    return Response({'message': f'Role {role} assigned to user'}, status=status.HTTP_201_CREATED)
+    return Response(UserRoleSerializer(user_role).data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
 
 
 @api_view(['DELETE'])
@@ -1041,37 +1181,70 @@ def remove_role(request, user_id, role):
     try:
         user_role = UserRole.objects.get(user_id=user_id, role=role)
         user_role.delete()
-        return Response({'message': 'Role removed successfully'}, status=status.HTTP_200_OK)
+        return Response(status=status.HTTP_204_NO_CONTENT)
     except UserRole.DoesNotExist:
         return Response({'error': 'Role not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def password_reset(request):
+    """Request password reset email"""
+    email = request.data.get('email')
+    if not email:
+        return Response({'error': 'Email required'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        user = User.objects.get(email=email)
+        # TODO: Send password reset email
+        return Response({'message': 'Password reset email sent'})
+    except User.DoesNotExist:
+        # Return success even if user doesn't exist (security)
+        return Response({'message': 'Password reset email sent'})
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def password_change(request):
+    """Change user password"""
+    old_password = request.data.get('old_password')
+    new_password = request.data.get('new_password')
+    
+    if not old_password or not new_password:
+        return Response({'error': 'old_password and new_password required'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    if not request.user.check_password(old_password):
+        return Response({'error': 'Invalid old password'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    request.user.set_password(new_password)
+    request.user.save()
+    return Response({'message': 'Password changed successfully'})
 ```
 
 ### 2. Cities Views (apps/cities/views.py)
 
 ```python
+from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
-from rest_framework import status
+
 from .models import City
 from .serializers import CitySerializer
-from utils.pagination import StandardResultsPagination
 from utils.permissions import IsAdmin
+from utils.pagination import StandardResultsPagination
 
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def list_cities(request):
-    """List all cities with optional search"""
+    """List all cities"""
     cities = City.objects.all()
     
-    search = request.query_params.get('search', '')
+    # Search
+    search = request.query_params.get('search')
     if search:
-        cities = cities.filter(name__icontains=search) | cities.filter(state__icontains=search)
-    
-    state = request.query_params.get('state', '')
-    if state:
-        cities = cities.filter(state__iexact=state)
+        cities = cities.filter(name__icontains=search)
     
     paginator = StandardResultsPagination()
     result_page = paginator.paginate_queryset(cities, request)
@@ -1085,8 +1258,7 @@ def get_city(request, city_id):
     """Get city by ID"""
     try:
         city = City.objects.get(id=city_id)
-        serializer = CitySerializer(city)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(CitySerializer(city).data)
     except City.DoesNotExist:
         return Response({'error': 'City not found'}, status=status.HTTP_404_NOT_FOUND)
 
@@ -1094,7 +1266,7 @@ def get_city(request, city_id):
 @api_view(['POST'])
 @permission_classes([IsAdmin])
 def create_city(request):
-    """Create a new city (Admin only)"""
+    """Create city (Admin only)"""
     serializer = CitySerializer(data=request.data)
     if serializer.is_valid():
         serializer.save()
@@ -1105,27 +1277,27 @@ def create_city(request):
 @api_view(['PUT', 'PATCH'])
 @permission_classes([IsAdmin])
 def update_city(request, city_id):
-    """Update a city (Admin only)"""
+    """Update city (Admin only)"""
     try:
         city = City.objects.get(id=city_id)
     except City.DoesNotExist:
         return Response({'error': 'City not found'}, status=status.HTTP_404_NOT_FOUND)
-
-    serializer = CitySerializer(city, data=request.data, partial=True)
+    
+    serializer = CitySerializer(city, data=request.data, partial=request.method == 'PATCH')
     if serializer.is_valid():
         serializer.save()
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.data)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 @api_view(['DELETE'])
 @permission_classes([IsAdmin])
 def delete_city(request, city_id):
-    """Delete a city (Admin only)"""
+    """Delete city (Admin only)"""
     try:
         city = City.objects.get(id=city_id)
         city.delete()
-        return Response({'message': 'City deleted successfully'}, status=status.HTTP_200_OK)
+        return Response(status=status.HTTP_204_NO_CONTENT)
     except City.DoesNotExist:
         return Response({'error': 'City not found'}, status=status.HTTP_404_NOT_FOUND)
 ```
@@ -1133,75 +1305,60 @@ def delete_city(request, city_id):
 ### 3. Companies Views (apps/companies/views.py)
 
 ```python
+from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
-from rest_framework import status
+
 from .models import Company
-from .serializers import CompanySerializer, CompanyListSerializer
-from apps.accounts.models import UserRole, AppRole
+from .serializers import CompanySerializer, CompanyCreateSerializer
+from apps.accounts.models import AppRole, UserRole
+from utils.permissions import IsAdmin, IsOwnerOrAdmin
 from utils.pagination import StandardResultsPagination
-from utils.permissions import IsCompanyOwner, IsAdmin
 
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def list_companies(request):
-    """List all verified companies"""
+    """List verified companies"""
     companies = Company.objects.filter(is_verified=True)
     
-    search = request.query_params.get('search', '')
+    # Filter by owner
+    owner_id = request.query_params.get('owner_id')
+    if owner_id:
+        companies = Company.objects.filter(owner_id=owner_id)
+    
+    # Search
+    search = request.query_params.get('search')
     if search:
         companies = companies.filter(name__icontains=search)
     
     paginator = StandardResultsPagination()
     result_page = paginator.paginate_queryset(companies, request)
-    serializer = CompanyListSerializer(result_page, many=True)
+    serializer = CompanySerializer(result_page, many=True)
+    return paginator.get_paginated_response(serializer.data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAdmin])
+def list_all_companies(request):
+    """List all companies (Admin only)"""
+    companies = Company.objects.all()
+    paginator = StandardResultsPagination()
+    result_page = paginator.paginate_queryset(companies, request)
+    serializer = CompanySerializer(result_page, many=True)
     return paginator.get_paginated_response(serializer.data)
 
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def get_company(request, company_id):
-    """Get company details"""
+    """Get company by ID"""
     try:
         company = Company.objects.get(id=company_id)
-        serializer = CompanySerializer(company)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(CompanySerializer(company).data)
     except Company.DoesNotExist:
         return Response({'error': 'Company not found'}, status=status.HTTP_404_NOT_FOUND)
-
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def create_company(request):
-    """Create a new company"""
-    data = request.data.copy()
-    data['owner'] = request.user.id
-    
-    serializer = CompanySerializer(data=data)
-    if serializer.is_valid():
-        company = serializer.save()
-        # Assign company_admin role to the owner
-        UserRole.objects.get_or_create(user=request.user, role=AppRole.COMPANY_ADMIN)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-@api_view(['PUT', 'PATCH'])
-@permission_classes([IsCompanyOwner])
-def update_company(request, company_id):
-    """Update company details (Owner only)"""
-    try:
-        company = Company.objects.get(id=company_id, owner=request.user)
-    except Company.DoesNotExist:
-        return Response({'error': 'Company not found or access denied'}, status=status.HTTP_404_NOT_FOUND)
-
-    serializer = CompanySerializer(company, data=request.data, partial=True)
-    if serializer.is_valid():
-        serializer.save()
-        return Response(serializer.data, status=status.HTTP_200_OK)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 @api_view(['GET'])
@@ -1210,308 +1367,110 @@ def my_company(request):
     """Get current user's company"""
     try:
         company = Company.objects.get(owner=request.user)
-        serializer = CompanySerializer(company)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(CompanySerializer(company).data)
     except Company.DoesNotExist:
         return Response({'error': 'No company found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def create_company(request):
+    """Create a new company"""
+    serializer = CompanyCreateSerializer(data=request.data, context={'request': request})
+    if serializer.is_valid():
+        company = serializer.save()
+        # Assign company_admin role
+        UserRole.objects.get_or_create(user=request.user, role=AppRole.COMPANY_ADMIN)
+        return Response(CompanySerializer(company).data, status=status.HTTP_201_CREATED)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['PUT', 'PATCH'])
+@permission_classes([IsOwnerOrAdmin])
+def update_company(request, company_id):
+    """Update company"""
+    try:
+        company = Company.objects.get(id=company_id)
+    except Company.DoesNotExist:
+        return Response({'error': 'Company not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    # Check permission
+    if company.owner != request.user and not request.user.roles.filter(role=AppRole.ADMIN).exists():
+        return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+    
+    serializer = CompanySerializer(company, data=request.data, partial=request.method == 'PATCH')
+    if serializer.is_valid():
+        serializer.save()
+        return Response(serializer.data)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 @api_view(['PATCH'])
 @permission_classes([IsAdmin])
 def verify_company(request, company_id):
-    """Verify or unverify a company (Admin only)"""
+    """Verify company (Admin only)"""
     try:
         company = Company.objects.get(id=company_id)
-        company.is_verified = request.data.get('is_verified', True)
+        company.is_verified = True
         company.save()
-        return Response({'message': f'Company verification updated'}, status=status.HTTP_200_OK)
+        return Response(CompanySerializer(company).data)
     except Company.DoesNotExist:
         return Response({'error': 'Company not found'}, status=status.HTTP_404_NOT_FOUND)
-
-
-@api_view(['GET'])
-@permission_classes([IsAdmin])
-def list_all_companies(request):
-    """List all companies including unverified (Admin only)"""
-    companies = Company.objects.all()
-    
-    is_verified = request.query_params.get('is_verified')
-    if is_verified is not None:
-        companies = companies.filter(is_verified=is_verified.lower() == 'true')
-    
-    paginator = StandardResultsPagination()
-    result_page = paginator.paginate_queryset(companies, request)
-    serializer = CompanySerializer(result_page, many=True)
-    return paginator.get_paginated_response(serializer.data)
 ```
 
-### 4. Buses Views (apps/buses/views.py)
+### 4. Trips Views (apps/trips/views.py)
 
 ```python
+from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
-from rest_framework import status
-from .models import Bus
-from .serializers import BusSerializer, BusListSerializer
-from apps.companies.models import Company
-from utils.pagination import StandardResultsPagination
-from utils.permissions import IsCompanyOwner
-
-
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def list_buses(request, company_id):
-    """List all buses for a company"""
-    buses = Bus.objects.filter(company_id=company_id, is_active=True)
-    
-    bus_type = request.query_params.get('bus_type', '')
-    if bus_type:
-        buses = buses.filter(bus_type=bus_type)
-    
-    paginator = StandardResultsPagination()
-    result_page = paginator.paginate_queryset(buses, request)
-    serializer = BusListSerializer(result_page, many=True)
-    return paginator.get_paginated_response(serializer.data)
-
-
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def get_bus(request, bus_id):
-    """Get bus details"""
-    try:
-        bus = Bus.objects.get(id=bus_id)
-        serializer = BusSerializer(bus)
-        return Response(serializer.data, status=status.HTTP_200_OK)
-    except Bus.DoesNotExist:
-        return Response({'error': 'Bus not found'}, status=status.HTTP_404_NOT_FOUND)
-
-
-@api_view(['POST'])
-@permission_classes([IsCompanyOwner])
-def create_bus(request):
-    """Create a new bus (Company owner only)"""
-    try:
-        company = Company.objects.get(owner=request.user)
-    except Company.DoesNotExist:
-        return Response({'error': 'You do not own a company'}, status=status.HTTP_403_FORBIDDEN)
-
-    data = request.data.copy()
-    data['company'] = company.id
-    
-    serializer = BusSerializer(data=data)
-    if serializer.is_valid():
-        serializer.save()
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-@api_view(['PUT', 'PATCH'])
-@permission_classes([IsCompanyOwner])
-def update_bus(request, bus_id):
-    """Update bus details (Company owner only)"""
-    try:
-        bus = Bus.objects.get(id=bus_id, company__owner=request.user)
-    except Bus.DoesNotExist:
-        return Response({'error': 'Bus not found or access denied'}, status=status.HTTP_404_NOT_FOUND)
-
-    serializer = BusSerializer(bus, data=request.data, partial=True)
-    if serializer.is_valid():
-        serializer.save()
-        return Response(serializer.data, status=status.HTTP_200_OK)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-@api_view(['DELETE'])
-@permission_classes([IsCompanyOwner])
-def delete_bus(request, bus_id):
-    """Delete a bus (Company owner only)"""
-    try:
-        bus = Bus.objects.get(id=bus_id, company__owner=request.user)
-        bus.delete()
-        return Response({'message': 'Bus deleted successfully'}, status=status.HTTP_200_OK)
-    except Bus.DoesNotExist:
-        return Response({'error': 'Bus not found or access denied'}, status=status.HTTP_404_NOT_FOUND)
-
-
-@api_view(['GET'])
-@permission_classes([IsCompanyOwner])
-def my_buses(request):
-    """Get all buses for current user's company"""
-    try:
-        company = Company.objects.get(owner=request.user)
-        buses = Bus.objects.filter(company=company)
-        
-        paginator = StandardResultsPagination()
-        result_page = paginator.paginate_queryset(buses, request)
-        serializer = BusSerializer(result_page, many=True)
-        return paginator.get_paginated_response(serializer.data)
-    except Company.DoesNotExist:
-        return Response({'error': 'You do not own a company'}, status=status.HTTP_403_FORBIDDEN)
-```
-
-### 5. Routes Views (apps/routes/views.py)
-
-```python
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny, IsAuthenticated
-from rest_framework.response import Response
-from rest_framework import status
-from .models import Route
-from .serializers import RouteSerializer, RouteListSerializer
-from apps.companies.models import Company
-from utils.pagination import StandardResultsPagination
-from utils.permissions import IsCompanyOwner
-
-
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def list_routes(request):
-    """List all active routes"""
-    routes = Route.objects.filter(is_active=True)
-    
-    origin = request.query_params.get('origin', '')
-    destination = request.query_params.get('destination', '')
-    company_id = request.query_params.get('company_id', '')
-    
-    if origin:
-        routes = routes.filter(origin_city__name__icontains=origin)
-    if destination:
-        routes = routes.filter(destination_city__name__icontains=destination)
-    if company_id:
-        routes = routes.filter(company_id=company_id)
-    
-    paginator = StandardResultsPagination()
-    result_page = paginator.paginate_queryset(routes, request)
-    serializer = RouteListSerializer(result_page, many=True)
-    return paginator.get_paginated_response(serializer.data)
-
-
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def get_route(request, route_id):
-    """Get route details"""
-    try:
-        route = Route.objects.get(id=route_id)
-        serializer = RouteSerializer(route)
-        return Response(serializer.data, status=status.HTTP_200_OK)
-    except Route.DoesNotExist:
-        return Response({'error': 'Route not found'}, status=status.HTTP_404_NOT_FOUND)
-
-
-@api_view(['POST'])
-@permission_classes([IsCompanyOwner])
-def create_route(request):
-    """Create a new route (Company owner only)"""
-    try:
-        company = Company.objects.get(owner=request.user)
-    except Company.DoesNotExist:
-        return Response({'error': 'You do not own a company'}, status=status.HTTP_403_FORBIDDEN)
-
-    data = request.data.copy()
-    data['company'] = company.id
-    
-    serializer = RouteSerializer(data=data)
-    if serializer.is_valid():
-        serializer.save()
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-@api_view(['PUT', 'PATCH'])
-@permission_classes([IsCompanyOwner])
-def update_route(request, route_id):
-    """Update route (Company owner only)"""
-    try:
-        route = Route.objects.get(id=route_id, company__owner=request.user)
-    except Route.DoesNotExist:
-        return Response({'error': 'Route not found or access denied'}, status=status.HTTP_404_NOT_FOUND)
-
-    serializer = RouteSerializer(route, data=request.data, partial=True)
-    if serializer.is_valid():
-        serializer.save()
-        return Response(serializer.data, status=status.HTTP_200_OK)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-@api_view(['DELETE'])
-@permission_classes([IsCompanyOwner])
-def delete_route(request, route_id):
-    """Delete a route (Company owner only)"""
-    try:
-        route = Route.objects.get(id=route_id, company__owner=request.user)
-        route.delete()
-        return Response({'message': 'Route deleted successfully'}, status=status.HTTP_200_OK)
-    except Route.DoesNotExist:
-        return Response({'error': 'Route not found or access denied'}, status=status.HTTP_404_NOT_FOUND)
-
-
-@api_view(['GET'])
-@permission_classes([IsCompanyOwner])
-def my_routes(request):
-    """Get all routes for current user's company"""
-    try:
-        company = Company.objects.get(owner=request.user)
-        routes = Route.objects.filter(company=company)
-        
-        paginator = StandardResultsPagination()
-        result_page = paginator.paginate_queryset(routes, request)
-        serializer = RouteSerializer(result_page, many=True)
-        return paginator.get_paginated_response(serializer.data)
-    except Company.DoesNotExist:
-        return Response({'error': 'You do not own a company'}, status=status.HTTP_403_FORBIDDEN)
-```
-
-### 6. Trips Views (apps/trips/views.py)
-
-```python
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny, IsAuthenticated
-from rest_framework.response import Response
-from rest_framework import status
 from django.utils import timezone
-from datetime import datetime
+
 from .models import Trip, TripStatus
 from .serializers import TripSerializer, TripSearchSerializer
-from apps.companies.models import Company
-from apps.routes.models import Route
-from utils.pagination import TripsPagination, StandardResultsPagination, SeatsPagination
+from apps.accounts.models import AppRole
 from utils.permissions import IsCompanyOwner
+from utils.pagination import TripsPagination, SeatsPagination
 
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def search_trips(request):
-    """Search for available trips"""
-    origin = request.query_params.get('origin', '')
-    destination = request.query_params.get('destination', '')
-    date = request.query_params.get('date', '')
-    passengers = int(request.query_params.get('passengers', 1))
-
-    trips = Trip.objects.filter(
-        status=TripStatus.SCHEDULED,
-        available_seats__gte=passengers
-    ).select_related(
+    """
+    Search trips with parameters:
+    - origin_city_id: UUID
+    - destination_city_id: UUID
+    - departure_date: YYYY-MM-DD
+    - min_seats: minimum available seats (default: 1)
+    """
+    trips = Trip.objects.select_related(
         'route__origin_city',
         'route__destination_city',
         'route__company',
         'bus'
+    ).filter(
+        status=TripStatus.SCHEDULED,
+        departure_time__gt=timezone.now()
     )
-
-    if origin:
-        trips = trips.filter(route__origin_city__name__icontains=origin)
-    if destination:
-        trips = trips.filter(route__destination_city__name__icontains=destination)
-    if date:
-        trip_date = datetime.strptime(date, '%Y-%m-%d').date()
-        trips = trips.filter(departure_time__date=trip_date)
     
-    # Only show future trips
-    trips = trips.filter(departure_time__gt=timezone.now())
+    # Filters
+    origin_city_id = request.query_params.get('origin_city_id')
+    destination_city_id = request.query_params.get('destination_city_id')
+    departure_date = request.query_params.get('departure_date')
+    min_seats = request.query_params.get('min_seats', 1)
     
-    # Sort by departure time
+    if origin_city_id:
+        trips = trips.filter(route__origin_city_id=origin_city_id)
+    if destination_city_id:
+        trips = trips.filter(route__destination_city_id=destination_city_id)
+    if departure_date:
+        trips = trips.filter(departure_time__date=departure_date)
+    if min_seats:
+        trips = trips.filter(available_seats__gte=int(min_seats))
+    
     trips = trips.order_by('departure_time')
-
+    
     paginator = TripsPagination()
     result_page = paginator.paginate_queryset(trips, request)
     serializer = TripSearchSerializer(result_page, many=True)
@@ -1521,7 +1480,7 @@ def search_trips(request):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def get_trip(request, trip_id):
-    """Get trip details"""
+    """Get trip details with full nested data"""
     try:
         trip = Trip.objects.select_related(
             'route__origin_city',
@@ -1529,8 +1488,7 @@ def get_trip(request, trip_id):
             'route__company',
             'bus'
         ).get(id=trip_id)
-        serializer = TripSerializer(trip)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(TripSerializer(trip).data)
     except Trip.DoesNotExist:
         return Response({'error': 'Trip not found'}, status=status.HTTP_404_NOT_FOUND)
 
@@ -1538,59 +1496,59 @@ def get_trip(request, trip_id):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def get_trip_seats(request, trip_id):
-    """Get available seats for a trip with pagination"""
+    """Get available and booked seats for a trip"""
     try:
-        trip = Trip.objects.get(id=trip_id)
+        trip = Trip.objects.prefetch_related('bookings').get(id=trip_id)
     except Trip.DoesNotExist:
         return Response({'error': 'Trip not found'}, status=status.HTTP_404_NOT_FOUND)
-
-    # Get booked seats from confirmed bookings
-    from apps.bookings.models import Booking, BookingStatus
+    
+    # Get all booked seats
     booked_seats = set()
-    bookings = Booking.objects.filter(
-        trip=trip,
-        status__in=[BookingStatus.PENDING, BookingStatus.CONFIRMED]
-    )
-    for booking in bookings:
+    for booking in trip.bookings.exclude(status__in=['cancelled', 'expired']):
         booked_seats.update(booking.seats)
-
-    # Generate all seats based on bus capacity
+    
+    # Generate all seats
     total_seats = trip.bus.total_seats
     all_seats = []
     for i in range(1, total_seats + 1):
         seat_number = str(i)
-        row = (i - 1) // 4 + 1
-        column = (i - 1) % 4 + 1
         all_seats.append({
-            'number': seat_number,
-            'row': row,
-            'column': column,
-            'is_available': seat_number not in booked_seats,
-            'type': 'premium' if row <= 2 else 'standard'
+            'seat_number': seat_number,
+            'is_available': seat_number not in booked_seats
         })
-
-    # Paginate seats
+    
     paginator = SeatsPagination()
     result_page = paginator.paginate_queryset(all_seats, request)
     return paginator.get_paginated_response(result_page)
 
 
+@api_view(['GET'])
+@permission_classes([IsCompanyOwner])
+def my_trips(request):
+    """Get trips for current user's company"""
+    try:
+        company = request.user.companies.first()
+        if not company:
+            return Response({'error': 'No company found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        trips = Trip.objects.filter(route__company=company).select_related(
+            'route__origin_city',
+            'route__destination_city',
+            'bus'
+        )
+        
+        paginator = TripsPagination()
+        result_page = paginator.paginate_queryset(trips, request)
+        serializer = TripSerializer(result_page, many=True)
+        return paginator.get_paginated_response(serializer.data)
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 @api_view(['POST'])
 @permission_classes([IsCompanyOwner])
 def create_trip(request):
-    """Create a new trip (Company owner only)"""
-    try:
-        company = Company.objects.get(owner=request.user)
-    except Company.DoesNotExist:
-        return Response({'error': 'You do not own a company'}, status=status.HTTP_403_FORBIDDEN)
-
-    # Verify route belongs to company
-    route_id = request.data.get('route')
-    try:
-        route = Route.objects.get(id=route_id, company=company)
-    except Route.DoesNotExist:
-        return Response({'error': 'Route not found or access denied'}, status=status.HTTP_404_NOT_FOUND)
-
+    """Create a new trip"""
     serializer = TripSerializer(data=request.data)
     if serializer.is_valid():
         serializer.save()
@@ -1601,255 +1559,72 @@ def create_trip(request):
 @api_view(['PUT', 'PATCH'])
 @permission_classes([IsCompanyOwner])
 def update_trip(request, trip_id):
-    """Update trip (Company owner only)"""
+    """Update trip"""
     try:
-        trip = Trip.objects.get(id=trip_id, route__company__owner=request.user)
+        trip = Trip.objects.get(id=trip_id)
     except Trip.DoesNotExist:
-        return Response({'error': 'Trip not found or access denied'}, status=status.HTTP_404_NOT_FOUND)
-
-    serializer = TripSerializer(trip, data=request.data, partial=True)
+        return Response({'error': 'Trip not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    # Check ownership
+    if trip.route.company.owner != request.user:
+        return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+    
+    serializer = TripSerializer(trip, data=request.data, partial=request.method == 'PATCH')
     if serializer.is_valid():
         serializer.save()
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.data)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 @api_view(['DELETE'])
 @permission_classes([IsCompanyOwner])
 def delete_trip(request, trip_id):
-    """Delete a trip (Company owner only)"""
+    """Delete trip"""
     try:
-        trip = Trip.objects.get(id=trip_id, route__company__owner=request.user)
-        trip.delete()
-        return Response({'message': 'Trip deleted successfully'}, status=status.HTTP_200_OK)
+        trip = Trip.objects.get(id=trip_id)
     except Trip.DoesNotExist:
-        return Response({'error': 'Trip not found or access denied'}, status=status.HTTP_404_NOT_FOUND)
-
-
-@api_view(['GET'])
-@permission_classes([IsCompanyOwner])
-def my_trips(request):
-    """Get all trips for current user's company"""
-    try:
-        company = Company.objects.get(owner=request.user)
-        trips = Trip.objects.filter(route__company=company).order_by('-departure_time')
-        
-        # Filter by status
-        trip_status = request.query_params.get('status', '')
-        if trip_status:
-            trips = trips.filter(status=trip_status)
-        
-        paginator = StandardResultsPagination()
-        result_page = paginator.paginate_queryset(trips, request)
-        serializer = TripSerializer(result_page, many=True)
-        return paginator.get_paginated_response(serializer.data)
-    except Company.DoesNotExist:
-        return Response({'error': 'You do not own a company'}, status=status.HTTP_403_FORBIDDEN)
+        return Response({'error': 'Trip not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    # Check ownership
+    if trip.route.company.owner != request.user:
+        return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+    
+    trip.delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)
 ```
 
-### 7. Bookings Views (apps/bookings/views.py)
+### 5. Bookings Views (apps/bookings/views.py)
 
 ```python
+from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from rest_framework import status
 from django.utils import timezone
-from django.db import transaction
-from datetime import timedelta
+
 from .models import Booking, BookingPassenger, BookingStatus
-from .serializers import (
-    BookingSerializer, BookingCreateSerializer, BookingListSerializer,
-    BookingPassengerSerializer
-)
-from apps.trips.models import Trip
-from apps.companies.models import Company
-from utils.pagination import BookingsPagination, StandardResultsPagination
-from utils.permissions import IsCompanyOwner, IsAdmin, IsOwnerOrAdmin
+from .serializers import BookingSerializer, BookingCreateSerializer, BookingPassengerSerializer
+from apps.accounts.models import AppRole
+from utils.permissions import IsAdmin, IsCompanyOwner
+from utils.pagination import BookingsPagination
 
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def my_bookings(request):
     """Get current user's bookings"""
-    bookings = Booking.objects.filter(user=request.user).order_by('-created_at')
-    
-    # Filter by status
-    booking_status = request.query_params.get('status', '')
-    if booking_status:
-        bookings = bookings.filter(status=booking_status)
-    
-    paginator = BookingsPagination()
-    result_page = paginator.paginate_queryset(bookings, request)
-    serializer = BookingListSerializer(result_page, many=True)
-    return paginator.get_paginated_response(serializer.data)
-
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def get_booking(request, booking_id):
-    """Get booking details"""
-    try:
-        booking = Booking.objects.get(id=booking_id, user=request.user)
-        serializer = BookingSerializer(booking)
-        return Response(serializer.data, status=status.HTTP_200_OK)
-    except Booking.DoesNotExist:
-        return Response({'error': 'Booking not found'}, status=status.HTTP_404_NOT_FOUND)
-
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def create_booking(request):
-    """Create a new booking with multiple passengers"""
-    serializer = BookingCreateSerializer(data=request.data)
-    if not serializer.is_valid():
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-    validated_data = serializer.validated_data
-    trip_id = validated_data['trip_id']
-    seats = validated_data['seats']
-    passengers_data = validated_data['passengers']
-
-    try:
-        trip = Trip.objects.select_for_update().get(id=trip_id)
-    except Trip.DoesNotExist:
-        return Response({'error': 'Trip not found'}, status=status.HTTP_404_NOT_FOUND)
-
-    # Check seat availability
-    if trip.available_seats < len(seats):
-        return Response({'error': 'Not enough available seats'}, status=status.HTTP_400_BAD_REQUEST)
-
-    # Check if seats are already booked
-    existing_bookings = Booking.objects.filter(
-        trip=trip,
-        status__in=[BookingStatus.PENDING, BookingStatus.CONFIRMED]
+    bookings = Booking.objects.filter(user=request.user).select_related(
+        'trip__route__origin_city',
+        'trip__route__destination_city',
+        'trip__route__company',
+        'trip__bus'
     )
-    booked_seats = set()
-    for booking in existing_bookings:
-        booked_seats.update(booking.seats)
-
-    for seat in seats:
-        if seat in booked_seats:
-            return Response(
-                {'error': f'Seat {seat} is already booked'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-    with transaction.atomic():
-        # Calculate total amount
-        total_amount = trip.price * len(seats)
-
-        # Create booking
-        booking = Booking.objects.create(
-            trip=trip,
-            user=request.user,
-            seats=seats,
-            total_amount=total_amount,
-            passenger_name=validated_data['passenger_name'],
-            passenger_phone=validated_data['passenger_phone'],
-            passenger_email=validated_data['passenger_email'],
-            hold_expires_at=timezone.now() + timedelta(minutes=15),
-            status=BookingStatus.PENDING
-        )
-
-        # Create passengers
-        for i, passenger_data in enumerate(passengers_data):
-            BookingPassenger.objects.create(
-                booking=booking,
-                seat_number=seats[i],
-                **passenger_data
-            )
-
-        # Update available seats
-        trip.available_seats -= len(seats)
-        trip.save()
-
-    return Response(BookingSerializer(booking).data, status=status.HTTP_201_CREATED)
-
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def confirm_payment(request, booking_id):
-    """Confirm booking payment"""
-    try:
-        booking = Booking.objects.get(id=booking_id, user=request.user)
-    except Booking.DoesNotExist:
-        return Response({'error': 'Booking not found'}, status=status.HTTP_404_NOT_FOUND)
-
-    if booking.status != BookingStatus.PENDING:
-        return Response({'error': 'Booking is not pending'}, status=status.HTTP_400_BAD_REQUEST)
-
-    if booking.hold_expires_at and booking.hold_expires_at < timezone.now():
-        booking.status = BookingStatus.EXPIRED
-        booking.save()
-        # Release seats
-        booking.trip.available_seats += len(booking.seats)
-        booking.trip.save()
-        return Response({'error': 'Booking has expired'}, status=status.HTTP_400_BAD_REQUEST)
-
-    booking.status = BookingStatus.CONFIRMED
-    booking.payment_completed_at = timezone.now()
-    booking.save()
-
-    return Response(BookingSerializer(booking).data, status=status.HTTP_200_OK)
-
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def cancel_booking(request, booking_id):
-    """Cancel a booking"""
-    try:
-        booking = Booking.objects.get(id=booking_id, user=request.user)
-    except Booking.DoesNotExist:
-        return Response({'error': 'Booking not found'}, status=status.HTTP_404_NOT_FOUND)
-
-    if booking.status == BookingStatus.CANCELLED:
-        return Response({'error': 'Booking is already cancelled'}, status=status.HTTP_400_BAD_REQUEST)
-
-    cancellation_reason = request.data.get('reason', 'User requested cancellation')
-
-    with transaction.atomic():
-        booking.status = BookingStatus.CANCELLED
-        booking.cancelled_at = timezone.now()
-        booking.cancellation_reason = cancellation_reason
-        booking.save()
-
-        # Release seats
-        booking.trip.available_seats += len(booking.seats)
-        booking.trip.save()
-
-    return Response(BookingSerializer(booking).data, status=status.HTTP_200_OK)
-
-
-@api_view(['GET'])
-@permission_classes([IsCompanyOwner])
-def company_bookings(request):
-    """Get all bookings for company's trips"""
-    try:
-        company = Company.objects.get(owner=request.user)
-    except Company.DoesNotExist:
-        return Response({'error': 'You do not own a company'}, status=status.HTTP_403_FORBIDDEN)
-
-    bookings = Booking.objects.filter(
-        trip__route__company=company
-    ).order_by('-created_at')
-
-    # Filter by status
-    booking_status = request.query_params.get('status', '')
-    if booking_status:
-        bookings = bookings.filter(status=booking_status)
-
-    # Search
-    search = request.query_params.get('search', '')
-    if search:
-        bookings = bookings.filter(
-            ticket_code__icontains=search
-        ) | bookings.filter(
-            passenger_name__icontains=search
-        ) | bookings.filter(
-            passenger_phone__icontains=search
-        )
-
+    
+    # Filter by user_id (for admin access)
+    user_id = request.query_params.get('user_id')
+    if user_id and request.user.roles.filter(role=AppRole.ADMIN).exists():
+        bookings = Booking.objects.filter(user_id=user_id)
+    
     paginator = BookingsPagination()
     result_page = paginator.paginate_queryset(bookings, request)
     serializer = BookingSerializer(result_page, many=True)
@@ -1860,24 +1635,40 @@ def company_bookings(request):
 @permission_classes([IsAdmin])
 def all_bookings(request):
     """Get all bookings (Admin only)"""
-    bookings = Booking.objects.all().order_by('-created_at')
+    bookings = Booking.objects.all().select_related(
+        'trip__route__origin_city',
+        'trip__route__destination_city',
+        'trip__route__company',
+        'trip__bus',
+        'user'
+    )
+    
+    paginator = BookingsPagination()
+    result_page = paginator.paginate_queryset(bookings, request)
+    serializer = BookingSerializer(result_page, many=True)
+    return paginator.get_paginated_response(serializer.data)
 
-    # Filter by status
-    booking_status = request.query_params.get('status', '')
-    if booking_status:
-        bookings = bookings.filter(status=booking_status)
 
-    # Search
-    search = request.query_params.get('search', '')
-    if search:
-        bookings = bookings.filter(
-            ticket_code__icontains=search
-        ) | bookings.filter(
-            passenger_name__icontains=search
-        ) | bookings.filter(
-            passenger_email__icontains=search
-        )
-
+@api_view(['GET'])
+@permission_classes([IsCompanyOwner])
+def company_bookings(request):
+    """Get bookings for current user's company"""
+    company = request.user.companies.first()
+    if not company:
+        return Response({'error': 'No company found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    bookings = Booking.objects.filter(trip__route__company=company).select_related(
+        'trip__route__origin_city',
+        'trip__route__destination_city',
+        'trip__bus',
+        'user'
+    )
+    
+    # Filter by company_id
+    company_id = request.query_params.get('company_id')
+    if company_id:
+        bookings = Booking.objects.filter(trip__route__company_id=company_id)
+    
     paginator = BookingsPagination()
     result_page = paginator.paginate_queryset(bookings, request)
     serializer = BookingSerializer(result_page, many=True)
@@ -1886,25 +1677,103 @@ def all_bookings(request):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-def booking_passengers(request, booking_id):
-    """Get passengers for a booking with pagination"""
+def get_booking(request, booking_id):
+    """Get booking details"""
     try:
-        booking = Booking.objects.get(id=booking_id)
-        # Check access
-        is_owner = booking.user == request.user
-        is_company_owner = booking.trip.route.company.owner == request.user
-        is_admin = request.user.roles.filter(role='admin').exists()
+        booking = Booking.objects.select_related(
+            'trip__route__origin_city',
+            'trip__route__destination_city',
+            'trip__route__company',
+            'trip__bus'
+        ).prefetch_related('passengers').get(id=booking_id)
         
-        if not (is_owner or is_company_owner or is_admin):
-            return Response({'error': 'Access denied'}, status=status.HTTP_403_FORBIDDEN)
+        # Check ownership
+        if booking.user != request.user and not request.user.roles.filter(role=AppRole.ADMIN).exists():
+            if booking.trip.route.company.owner != request.user:
+                return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+        
+        return Response(BookingSerializer(booking).data)
     except Booking.DoesNotExist:
         return Response({'error': 'Booking not found'}, status=status.HTTP_404_NOT_FOUND)
 
-    passengers = BookingPassenger.objects.filter(booking=booking)
-    paginator = StandardResultsPagination()
-    result_page = paginator.paginate_queryset(passengers, request)
-    serializer = BookingPassengerSerializer(result_page, many=True)
-    return paginator.get_paginated_response(serializer.data)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def booking_passengers(request, booking_id):
+    """Get passengers for a booking"""
+    try:
+        booking = Booking.objects.get(id=booking_id)
+        
+        # Check ownership
+        if booking.user != request.user and not request.user.roles.filter(role=AppRole.ADMIN).exists():
+            if booking.trip.route.company.owner != request.user:
+                return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+        
+        passengers = BookingPassenger.objects.filter(booking=booking)
+        serializer = BookingPassengerSerializer(passengers, many=True)
+        return Response(serializer.data)
+    except Booking.DoesNotExist:
+        return Response({'error': 'Booking not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def create_booking(request):
+    """Create a new booking"""
+    serializer = BookingCreateSerializer(data=request.data, context={'request': request})
+    if serializer.is_valid():
+        booking = serializer.save()
+        return Response(BookingSerializer(booking).data, status=status.HTTP_201_CREATED)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def confirm_payment(request, booking_id):
+    """Confirm payment for a booking"""
+    try:
+        booking = Booking.objects.get(id=booking_id, user=request.user)
+        
+        if booking.status != BookingStatus.PENDING:
+            return Response({'error': 'Booking is not pending'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if booking.hold_expires_at and booking.hold_expires_at < timezone.now():
+            booking.status = BookingStatus.EXPIRED
+            booking.save()
+            return Response({'error': 'Booking has expired'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        booking.status = BookingStatus.CONFIRMED
+        booking.payment_completed_at = timezone.now()
+        booking.save()
+        
+        return Response(BookingSerializer(booking).data)
+    except Booking.DoesNotExist:
+        return Response({'error': 'Booking not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def cancel_booking(request, booking_id):
+    """Cancel a booking"""
+    try:
+        booking = Booking.objects.get(id=booking_id, user=request.user)
+        
+        if booking.status == BookingStatus.CANCELLED:
+            return Response({'error': 'Booking already cancelled'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        reason = request.data.get('reason', '')
+        booking.status = BookingStatus.CANCELLED
+        booking.cancelled_at = timezone.now()
+        booking.cancellation_reason = reason
+        booking.save()
+        
+        # Restore available seats
+        booking.trip.available_seats += len(booking.seats)
+        booking.trip.save()
+        
+        return Response(BookingSerializer(booking).data)
+    except Booking.DoesNotExist:
+        return Response({'error': 'Booking not found'}, status=status.HTTP_404_NOT_FOUND)
 ```
 
 ---
@@ -1916,16 +1785,15 @@ def booking_passengers(request, booking_id):
 ```python
 from django.contrib import admin
 from django.urls import path, include
-from rest_framework_simplejwt.views import TokenRefreshView
+from rest_framework import permissions
 from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
-from rest_framework import permissions
 
 schema_view = get_schema_view(
     openapi.Info(
         title="Bus Booking API",
         default_version='v1',
-        description="API for bus ticket booking system",
+        description="API for bus booking system",
     ),
     public=True,
     permission_classes=[permissions.AllowAny],
@@ -1940,7 +1808,7 @@ urlpatterns = [
     path('api/v1/routes/', include('apps.routes.urls')),
     path('api/v1/trips/', include('apps.trips.urls')),
     path('api/v1/bookings/', include('apps.bookings.urls')),
-    path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    
     # API Documentation
     path('swagger/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
     path('redoc/', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc'),
@@ -1951,17 +1819,23 @@ urlpatterns = [
 
 ```python
 from django.urls import path
+from rest_framework_simplejwt.views import TokenRefreshView
 from . import views
 
 urlpatterns = [
     path('register/', views.register, name='register'),
     path('login/', views.login, name='login'),
     path('logout/', views.logout, name='logout'),
-    path('me/', views.get_current_user, name='current-user'),
+    path('refresh/', TokenRefreshView.as_view(), name='token-refresh'),
+    path('me/', views.me, name='me'),
     path('profile/', views.profile, name='profile'),
+    path('password-reset/', views.password_reset, name='password-reset'),
+    path('password-change/', views.password_change, name='password-change'),
     path('users/', views.list_users, name='list-users'),
     path('roles/assign/', views.assign_role, name='assign-role'),
     path('roles/<uuid:user_id>/<str:role>/', views.remove_role, name='remove-role'),
+    path('user-roles/', views.list_user_roles, name='list-user-roles'),
+    path('user-roles/check/', views.check_user_role, name='check-user-role'),
 ]
 ```
 
@@ -2004,7 +1878,7 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
-    path('company/<uuid:company_id>/', views.list_buses, name='list-buses'),
+    path('', views.list_buses, name='list-buses'),
     path('my/', views.my_buses, name='my-buses'),
     path('<uuid:bus_id>/', views.get_bus, name='get-bus'),
     path('create/', views.create_bus, name='create-bus'),
@@ -2074,11 +1948,16 @@ urlpatterns = [
 | `/api/v1/auth/register/` | POST | Register new user | No |
 | `/api/v1/auth/login/` | POST | Login user | No |
 | `/api/v1/auth/logout/` | POST | Logout user | Yes |
+| `/api/v1/auth/refresh/` | POST | Refresh access token | No |
 | `/api/v1/auth/me/` | GET | Get current user | Yes |
 | `/api/v1/auth/profile/` | GET, PUT, PATCH | User profile | Yes |
+| `/api/v1/auth/password-reset/` | POST | Request password reset | No |
+| `/api/v1/auth/password-change/` | POST | Change password | Yes |
 | `/api/v1/auth/users/` | GET | List users (Admin) | Admin |
 | `/api/v1/auth/roles/assign/` | POST | Assign role (Admin) | Admin |
 | `/api/v1/auth/roles/{user_id}/{role}/` | DELETE | Remove role (Admin) | Admin |
+| `/api/v1/auth/user-roles/` | GET | List user roles | Yes |
+| `/api/v1/auth/user-roles/check/` | GET | Check user role | Yes |
 | **Cities** |
 | `/api/v1/cities/` | GET | List cities | No |
 | `/api/v1/cities/{id}/` | GET | Get city | No |
@@ -2094,7 +1973,7 @@ urlpatterns = [
 | `/api/v1/companies/{id}/update/` | PUT, PATCH | Update company | Owner |
 | `/api/v1/companies/{id}/verify/` | PATCH | Verify company (Admin) | Admin |
 | **Buses** |
-| `/api/v1/buses/company/{company_id}/` | GET | List company buses | No |
+| `/api/v1/buses/` | GET | List buses | No |
 | `/api/v1/buses/my/` | GET | My company's buses | Owner |
 | `/api/v1/buses/{id}/` | GET | Get bus | No |
 | `/api/v1/buses/create/` | POST | Create bus | Owner |
@@ -2120,36 +1999,30 @@ urlpatterns = [
 | `/api/v1/bookings/all/` | GET | All bookings (Admin) | Admin |
 | `/api/v1/bookings/company/` | GET | Company bookings | Owner |
 | `/api/v1/bookings/{id}/` | GET | Get booking | Yes |
-| `/api/v1/bookings/{id}/passengers/` | GET | Get passengers (paginated) | Yes |
+| `/api/v1/bookings/{id}/passengers/` | GET | Get passengers | Yes |
 | `/api/v1/bookings/create/` | POST | Create booking | Yes |
 | `/api/v1/bookings/{id}/confirm-payment/` | POST | Confirm payment | Yes |
 | `/api/v1/bookings/{id}/cancel/` | POST | Cancel booking | Yes |
 
 ---
 
-## Environment Variables (.env)
+## Environment Variables (.env.example)
 
 ```env
 # Django
-DJANGO_SECRET_KEY=your-secret-key-here
-DEBUG=False
-ALLOWED_HOSTS=localhost,127.0.0.1,your-domain.com
-
-# Database
-DB_NAME=bus_booking
-DB_USER=postgres
-DB_PASSWORD=your-db-password
-DB_HOST=localhost
-DB_PORT=5432
+DJANGO_SECRET_KEY=your-secret-key-here-change-in-production
+DEBUG=True
+ALLOWED_HOSTS=localhost,127.0.0.1
 
 # CORS
-CORS_ORIGINS=http://localhost:3000,https://your-frontend.com
+CORS_ORIGINS=http://localhost:3000,http://localhost:5173,http://localhost:8080
 
-# Email (optional)
+# Email (optional - uses console backend in development)
 EMAIL_HOST=smtp.gmail.com
 EMAIL_PORT=587
 EMAIL_HOST_USER=your-email@gmail.com
 EMAIL_HOST_PASSWORD=your-app-password
+DEFAULT_FROM_EMAIL=noreply@busbooking.com
 
 # Payment Gateway (optional)
 PAYSTACK_SECRET_KEY=your-paystack-secret
@@ -2199,217 +2072,288 @@ FLUTTERWAVE_SECRET_KEY=your-flutterwave-secret
        │                    │
        │         ┌──────────┘
        ▼         ▼
-┌──────────────────┐
-│      Trip        │
-├──────────────────┤
-│ id (PK)          │
-│ route (FK)       │
-│ bus (FK)         │
-│ departure_time   │
-│ arrival_time     │
-│ price            │
-│ available_seats  │
-│ status           │
-└────────┬─────────┘
-         │
-         │ has
-         ▼
-┌──────────────────┐     ┌────────────────────┐
-│    Booking       │     │ BookingPassenger   │
-├──────────────────┤     ├────────────────────┤
-│ id (PK)          │◄────│ booking (FK)       │
-│ trip (FK)        │     │ full_name          │
-│ user (FK)        │     │ phone              │
-│ seats            │     │ email              │
-│ total_amount     │     │ nin                │
-│ status           │     │ seat_number        │
-│ ticket_code      │     └────────────────────┘
-│ passenger_name   │
-│ passenger_phone  │
-└──────────────────┘
+┌─────────────────────┐
+│        Trip         │
+├─────────────────────┤
+│ id (PK)             │
+│ route (FK)          │
+│ bus (FK)            │
+│ departure_time      │
+│ arrival_time        │
+│ price               │
+│ available_seats     │
+│ status              │
+└──────────┬──────────┘
+           │
+           │ has
+           ▼
+┌─────────────────────┐     ┌────────────────────┐
+│      Booking        │     │  BookingPassenger  │
+├─────────────────────┤     ├────────────────────┤
+│ id (PK)             │◄───►│ booking (FK)       │
+│ trip (FK)           │     │ full_name          │
+│ user (FK)           │     │ phone              │
+│ seats (JSON)        │     │ email              │
+│ total_amount        │     │ nin                │
+│ status              │     │ seat_number        │
+│ ticket_code         │     └────────────────────┘
+│ passenger_name      │
+│ passenger_email     │
+│ passenger_phone     │
+│ hold_expires_at     │
+│ payment_completed_at│
+└─────────────────────┘
+```
+
+---
+
+## Sample Data Fixtures (fixtures/sample_data.json)
+
+```json
+[
+  {
+    "model": "cities.city",
+    "pk": "550e8400-e29b-41d4-a716-446655440001",
+    "fields": {
+      "name": "Lagos",
+      "state": "Lagos",
+      "created_at": "2024-01-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "cities.city",
+    "pk": "550e8400-e29b-41d4-a716-446655440002",
+    "fields": {
+      "name": "Abuja",
+      "state": "FCT",
+      "created_at": "2024-01-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "cities.city",
+    "pk": "550e8400-e29b-41d4-a716-446655440003",
+    "fields": {
+      "name": "Port Harcourt",
+      "state": "Rivers",
+      "created_at": "2024-01-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "cities.city",
+    "pk": "550e8400-e29b-41d4-a716-446655440004",
+    "fields": {
+      "name": "Kano",
+      "state": "Kano",
+      "created_at": "2024-01-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "cities.city",
+    "pk": "550e8400-e29b-41d4-a716-446655440005",
+    "fields": {
+      "name": "Ibadan",
+      "state": "Oyo",
+      "created_at": "2024-01-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "cities.city",
+    "pk": "550e8400-e29b-41d4-a716-446655440006",
+    "fields": {
+      "name": "Benin City",
+      "state": "Edo",
+      "created_at": "2024-01-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "cities.city",
+    "pk": "550e8400-e29b-41d4-a716-446655440007",
+    "fields": {
+      "name": "Enugu",
+      "state": "Enugu",
+      "created_at": "2024-01-01T00:00:00Z"
+    }
+  },
+  {
+    "model": "cities.city",
+    "pk": "550e8400-e29b-41d4-a716-446655440008",
+    "fields": {
+      "name": "Calabar",
+      "state": "Cross River",
+      "created_at": "2024-01-01T00:00:00Z"
+    }
+  }
+]
+```
+
+---
+
+## Background Tasks (Management Commands)
+
+Without Celery/Redis, use Django management commands for background tasks:
+
+### Expire Pending Bookings (apps/bookings/management/commands/expire_bookings.py)
+
+```python
+from django.core.management.base import BaseCommand
+from django.utils import timezone
+from apps.bookings.models import Booking, BookingStatus
+
+
+class Command(BaseCommand):
+    help = 'Expire pending bookings that have passed their hold time'
+
+    def handle(self, *args, **options):
+        expired_bookings = Booking.objects.filter(
+            status=BookingStatus.PENDING,
+            hold_expires_at__lt=timezone.now()
+        )
+        
+        count = 0
+        for booking in expired_bookings:
+            booking.status = BookingStatus.EXPIRED
+            booking.save()
+            
+            # Restore available seats
+            booking.trip.available_seats += len(booking.seats)
+            booking.trip.save()
+            count += 1
+        
+        self.stdout.write(
+            self.style.SUCCESS(f'Successfully expired {count} bookings')
+        )
+```
+
+### Send Departure Reminders (apps/bookings/management/commands/send_reminders.py)
+
+```python
+from django.core.management.base import BaseCommand
+from django.utils import timezone
+from datetime import timedelta
+from django.core.mail import send_mail
+from django.conf import settings
+from apps.bookings.models import Booking, BookingStatus
+
+
+class Command(BaseCommand):
+    help = 'Send departure reminders for bookings departing in 24 hours'
+
+    def handle(self, *args, **options):
+        tomorrow = timezone.now() + timedelta(hours=24)
+        today = timezone.now()
+        
+        bookings = Booking.objects.filter(
+            status=BookingStatus.CONFIRMED,
+            trip__departure_time__range=(today, tomorrow)
+        ).select_related('trip__route__origin_city', 'trip__route__destination_city')
+        
+        count = 0
+        for booking in bookings:
+            try:
+                send_mail(
+                    subject=f'Reminder: Your trip tomorrow - {booking.ticket_code}',
+                    message=f'''
+Dear {booking.passenger_name},
+
+This is a reminder that your trip is tomorrow!
+
+Ticket Code: {booking.ticket_code}
+Route: {booking.trip.route.origin_city.name} to {booking.trip.route.destination_city.name}
+Departure: {booking.trip.departure_time.strftime('%Y-%m-%d %H:%M')}
+Seats: {', '.join(booking.seats)}
+
+Please arrive at least 30 minutes before departure.
+
+Safe travels!
+                    ''',
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    recipient_list=[booking.passenger_email],
+                    fail_silently=True
+                )
+                count += 1
+            except Exception as e:
+                self.stderr.write(f'Failed to send reminder for {booking.ticket_code}: {e}')
+        
+        self.stdout.write(
+            self.style.SUCCESS(f'Sent {count} departure reminders')
+        )
+```
+
+### Scheduling with Cron
+
+```bash
+# Edit crontab
+crontab -e
+
+# Add these lines:
+# Expire pending bookings every 5 minutes
+*/5 * * * * cd /path/to/project && /path/to/venv/bin/python manage.py expire_bookings
+
+# Send departure reminders daily at 8 AM
+0 8 * * * cd /path/to/project && /path/to/venv/bin/python manage.py send_reminders
 ```
 
 ---
 
 ## Testing Strategy
 
-### Test Configuration (conftest.py)
+### Test Configuration (pytest.ini)
+
+```ini
+[pytest]
+DJANGO_SETTINGS_MODULE = bus_booking.settings_test
+python_files = tests.py test_*.py *_test.py
+addopts = -v --tb=short
+```
+
+### Test Fixtures (tests/conftest.py)
 
 ```python
-# conftest.py - Pytest fixtures for all tests
 import pytest
 from rest_framework.test import APIClient
-from django.contrib.auth import get_user_model
-from apps.accounts.models import UserRole, AppRole, Profile
-from apps.cities.models import City
-from apps.companies.models import Company
-from apps.buses.models import Bus, BusType
-from apps.routes.models import Route
-from apps.trips.models import Trip, TripStatus
-from apps.bookings.models import Booking, BookingStatus
-from django.utils import timezone
-from datetime import timedelta
-
-User = get_user_model()
+from apps.accounts.models import User, UserRole, AppRole
 
 
 @pytest.fixture
 def api_client():
-    """Return an API client instance"""
     return APIClient()
 
 
 @pytest.fixture
-def create_user(db):
-    """Factory fixture to create users"""
-    def make_user(email='test@example.com', password='testpass123', full_name='Test User', role=AppRole.PASSENGER):
-        user = User.objects.create_user(email=email, password=password, full_name=full_name)
-        UserRole.objects.create(user=user, role=role)
-        Profile.objects.create(user=user, full_name=full_name)
+def create_user():
+    def _create_user(email='test@example.com', password='testpass123', **kwargs):
+        user = User.objects.create_user(email=email, password=password, **kwargs)
+        UserRole.objects.create(user=user, role=AppRole.PASSENGER)
         return user
-    return make_user
+    return _create_user
 
 
 @pytest.fixture
-def passenger_user(create_user):
-    """Create a passenger user"""
-    return create_user(email='passenger@example.com', role=AppRole.PASSENGER)
+def authenticated_client(api_client, create_user):
+    user = create_user()
+    api_client.force_authenticate(user=user)
+    return api_client, user
 
 
 @pytest.fixture
-def company_admin_user(create_user):
-    """Create a company admin user"""
-    return create_user(email='company@example.com', role=AppRole.COMPANY_ADMIN)
-
-
-@pytest.fixture
-def admin_user(create_user):
-    """Create an admin user"""
-    return create_user(email='admin@example.com', role=AppRole.ADMIN)
-
-
-@pytest.fixture
-def authenticated_client(api_client, passenger_user):
-    """Return an authenticated API client for passenger"""
-    api_client.force_authenticate(user=passenger_user)
-    return api_client
-
-
-@pytest.fixture
-def company_admin_client(api_client, company_admin_user):
-    """Return an authenticated API client for company admin"""
-    api_client.force_authenticate(user=company_admin_user)
-    return api_client
-
-
-@pytest.fixture
-def admin_client(api_client, admin_user):
-    """Return an authenticated API client for admin"""
-    api_client.force_authenticate(user=admin_user)
-    return api_client
-
-
-@pytest.fixture
-def cities(db):
-    """Create sample cities"""
-    lagos = City.objects.create(name='Lagos', state='Lagos')
-    abuja = City.objects.create(name='Abuja', state='FCT')
-    port_harcourt = City.objects.create(name='Port Harcourt', state='Rivers')
-    return {'lagos': lagos, 'abuja': abuja, 'port_harcourt': port_harcourt}
-
-
-@pytest.fixture
-def company(company_admin_user):
-    """Create a sample company"""
-    return Company.objects.create(
-        name='Test Transport',
-        owner=company_admin_user,
-        description='A test transport company',
-        rating=4.5,
-        is_verified=True
-    )
-
-
-@pytest.fixture
-def bus(company):
-    """Create a sample bus"""
-    return Bus.objects.create(
-        company=company,
-        plate_number='ABC123XY',
-        bus_type=BusType.LUXURY,
-        total_seats=48,
-        amenities=['AC', 'WiFi', 'USB'],
-        is_active=True
-    )
-
-
-@pytest.fixture
-def route(company, cities):
-    """Create a sample route"""
-    return Route.objects.create(
-        company=company,
-        origin_city=cities['lagos'],
-        destination_city=cities['abuja'],
-        base_price=15000.00,
-        duration_hours=8.5,
-        is_active=True
-    )
-
-
-@pytest.fixture
-def trip(route, bus):
-    """Create a sample trip"""
-    departure = timezone.now() + timedelta(days=1)
-    return Trip.objects.create(
-        route=route,
-        bus=bus,
-        departure_time=departure,
-        arrival_time=departure + timedelta(hours=8, minutes=30),
-        price=18000.00,
-        available_seats=48,
-        status=TripStatus.SCHEDULED
-    )
-
-
-@pytest.fixture
-def booking(trip, passenger_user):
-    """Create a sample booking"""
-    return Booking.objects.create(
-        trip=trip,
-        user=passenger_user,
-        seats=['1', '2'],
-        total_amount=36000.00,
-        status=BookingStatus.PENDING,
-        passenger_name='Test Passenger',
-        passenger_phone='08012345678',
-        passenger_email='passenger@test.com',
-        hold_expires_at=timezone.now() + timedelta(minutes=30)
-    )
+def admin_client(api_client, create_user):
+    user = create_user(email='admin@example.com')
+    UserRole.objects.create(user=user, role=AppRole.ADMIN)
+    api_client.force_authenticate(user=user)
+    return api_client, user
 ```
 
----
-
-## Unit Tests
-
-### 1. Accounts Unit Tests (apps/accounts/tests/test_unit.py)
+### Example Unit Tests (tests/test_unit/test_models.py)
 
 ```python
 import pytest
-from django.contrib.auth import get_user_model
-from apps.accounts.models import UserRole, Profile, AppRole
-from apps.accounts.serializers import (
-    UserSerializer, UserRegistrationSerializer, LoginSerializer, ProfileSerializer
-)
-
-User = get_user_model()
+from apps.accounts.models import User, UserRole, AppRole
+from apps.cities.models import City
 
 
 @pytest.mark.django_db
 class TestUserModel:
-    """Unit tests for User model"""
-
-    def test_create_user_success(self):
-        """Test creating a user is successful"""
+    def test_create_user(self):
         user = User.objects.create_user(
             email='test@example.com',
             password='testpass123',
@@ -2418,930 +2362,60 @@ class TestUserModel:
         assert user.email == 'test@example.com'
         assert user.full_name == 'Test User'
         assert user.check_password('testpass123')
-        assert user.is_active
-        assert not user.is_staff
-
-    def test_create_user_email_normalized(self):
-        """Test email is normalized for new users"""
-        email = 'test@EXAMPLE.COM'
-        user = User.objects.create_user(email=email, password='test123')
-        assert user.email == 'test@example.com'
-
-    def test_create_user_without_email_raises(self):
-        """Test creating user without email raises error"""
-        with pytest.raises(ValueError):
-            User.objects.create_user(email='', password='test123')
-
+    
     def test_create_superuser(self):
-        """Test creating a superuser"""
         user = User.objects.create_superuser(
             email='admin@example.com',
-            password='admin123'
+            password='adminpass123'
         )
         assert user.is_staff
         assert user.is_superuser
 
-    def test_user_str(self):
-        """Test user string representation"""
-        user = User.objects.create_user(email='test@example.com', password='test123')
-        assert str(user) == 'test@example.com'
-
 
 @pytest.mark.django_db
-class TestUserRoleModel:
-    """Unit tests for UserRole model"""
-
-    def test_create_user_role(self, create_user):
-        """Test creating user role"""
-        user = create_user(email='role@example.com')
-        role = UserRole.objects.filter(user=user, role=AppRole.PASSENGER).first()
-        assert role is not None
-        assert role.role == AppRole.PASSENGER
-
-    def test_user_role_unique_constraint(self, create_user):
-        """Test unique constraint on user-role combination"""
-        user = create_user(email='unique@example.com')
-        with pytest.raises(Exception):
-            UserRole.objects.create(user=user, role=AppRole.PASSENGER)
-
-
-@pytest.mark.django_db
-class TestUserRegistrationSerializer:
-    """Unit tests for registration serializer"""
-
-    def test_valid_registration(self):
-        """Test valid registration data"""
-        data = {
-            'email': 'new@example.com',
-            'password': 'securepass123',
-            'confirm_password': 'securepass123',
-            'full_name': 'New User',
-            'phone': '08012345678'
-        }
-        serializer = UserRegistrationSerializer(data=data)
-        assert serializer.is_valid()
-
-    def test_password_mismatch(self):
-        """Test password mismatch validation"""
-        data = {
-            'email': 'new@example.com',
-            'password': 'securepass123',
-            'confirm_password': 'differentpass',
-            'full_name': 'New User'
-        }
-        serializer = UserRegistrationSerializer(data=data)
-        assert not serializer.is_valid()
-        assert 'confirm_password' in serializer.errors
-
-    def test_short_password(self):
-        """Test short password validation"""
-        data = {
-            'email': 'new@example.com',
-            'password': 'short',
-            'confirm_password': 'short',
-            'full_name': 'New User'
-        }
-        serializer = UserRegistrationSerializer(data=data)
-        assert not serializer.is_valid()
-
-
-@pytest.mark.django_db
-class TestLoginSerializer:
-    """Unit tests for login serializer"""
-
-    def test_valid_login(self, create_user):
-        """Test valid login credentials"""
-        create_user(email='login@example.com', password='testpass123')
-        data = {'email': 'login@example.com', 'password': 'testpass123'}
-        serializer = LoginSerializer(data=data)
-        assert serializer.is_valid()
-        assert 'user' in serializer.validated_data
-
-    def test_invalid_credentials(self):
-        """Test invalid login credentials"""
-        data = {'email': 'wrong@example.com', 'password': 'wrongpass'}
-        serializer = LoginSerializer(data=data)
-        assert not serializer.is_valid()
+class TestCityModel:
+    def test_create_city(self):
+        city = City.objects.create(name='Lagos', state='Lagos')
+        assert str(city) == 'Lagos, Lagos'
 ```
 
-### 2. Bookings Unit Tests (apps/bookings/tests/test_unit.py)
+### Example Integration Tests (tests/test_integration/test_auth.py)
 
 ```python
 import pytest
-from decimal import Decimal
-from django.utils import timezone
-from datetime import timedelta
-from apps.bookings.models import Booking, BookingPassenger, BookingStatus, generate_ticket_code
-from apps.bookings.serializers import BookingSerializer, BookingCreateSerializer
-
-
-@pytest.mark.django_db
-class TestBookingModel:
-    """Unit tests for Booking model"""
-
-    def test_booking_creation(self, booking):
-        """Test booking is created correctly"""
-        assert booking.status == BookingStatus.PENDING
-        assert len(booking.seats) == 2
-        assert booking.total_amount == Decimal('36000.00')
-
-    def test_ticket_code_generation(self):
-        """Test ticket code generation"""
-        code = generate_ticket_code()
-        assert len(code) == 8
-        assert code.isalnum()
-
-    def test_ticket_code_uniqueness(self):
-        """Test ticket codes are unique"""
-        codes = [generate_ticket_code() for _ in range(100)]
-        assert len(codes) == len(set(codes))
-
-    def test_booking_str(self, booking):
-        """Test booking string representation"""
-        assert booking.ticket_code in str(booking)
-        assert booking.passenger_name in str(booking)
-
-
-@pytest.mark.django_db
-class TestBookingPassengerModel:
-    """Unit tests for BookingPassenger model"""
-
-    def test_create_passenger(self, booking):
-        """Test creating a booking passenger"""
-        passenger = BookingPassenger.objects.create(
-            booking=booking,
-            full_name='John Doe',
-            phone='08012345678',
-            email='john@example.com',
-            seat_number='1'
-        )
-        assert passenger.full_name == 'John Doe'
-        assert passenger.seat_number == '1'
-
-    def test_passenger_ordering(self, booking):
-        """Test passengers are ordered by seat number"""
-        BookingPassenger.objects.create(booking=booking, full_name='P2', phone='123', seat_number='2')
-        BookingPassenger.objects.create(booking=booking, full_name='P1', phone='123', seat_number='1')
-        passengers = list(booking.passengers.all())
-        assert passengers[0].seat_number == '1'
-        assert passengers[1].seat_number == '2'
-
-
-@pytest.mark.django_db
-class TestBookingCreateSerializer:
-    """Unit tests for booking creation serializer"""
-
-    def test_valid_booking_data(self, trip):
-        """Test valid booking creation data"""
-        data = {
-            'trip_id': str(trip.id),
-            'seats': ['1', '2'],
-            'passengers': [
-                {'full_name': 'John Doe', 'phone': '08012345678', 'email': 'john@example.com', 'seat_number': '1'},
-                {'full_name': 'Jane Doe', 'phone': '08087654321', 'email': 'jane@example.com', 'seat_number': '2'}
-            ],
-            'passenger_name': 'John Doe',
-            'passenger_phone': '08012345678',
-            'passenger_email': 'john@example.com'
-        }
-        serializer = BookingCreateSerializer(data=data)
-        assert serializer.is_valid()
-
-    def test_mismatched_seats_passengers(self, trip):
-        """Test validation error when seats don't match passengers"""
-        data = {
-            'trip_id': str(trip.id),
-            'seats': ['1', '2', '3'],  # 3 seats
-            'passengers': [
-                {'full_name': 'John Doe', 'phone': '08012345678', 'seat_number': '1'},
-                {'full_name': 'Jane Doe', 'phone': '08087654321', 'seat_number': '2'}
-            ],  # Only 2 passengers
-            'passenger_name': 'John Doe',
-            'passenger_phone': '08012345678',
-            'passenger_email': 'john@example.com'
-        }
-        serializer = BookingCreateSerializer(data=data)
-        assert not serializer.is_valid()
-```
-
-### 3. Trips Unit Tests (apps/trips/tests/test_unit.py)
-
-```python
-import pytest
-from django.utils import timezone
-from datetime import timedelta
-from apps.trips.models import Trip, TripStatus
-from apps.trips.serializers import TripSerializer, TripSearchSerializer
-
-
-@pytest.mark.django_db
-class TestTripModel:
-    """Unit tests for Trip model"""
-
-    def test_trip_creation(self, trip):
-        """Test trip is created correctly"""
-        assert trip.status == TripStatus.SCHEDULED
-        assert trip.available_seats == 48
-
-    def test_trip_company_property(self, trip, company):
-        """Test trip company property returns correct company"""
-        assert trip.company == company
-
-    def test_trip_str(self, trip):
-        """Test trip string representation"""
-        trip_str = str(trip)
-        assert 'Lagos' in trip_str or 'Abuja' in trip_str
-
-
-@pytest.mark.django_db
-class TestTripSerializer:
-    """Unit tests for trip serializers"""
-
-    def test_trip_serializer_fields(self, trip):
-        """Test trip serializer includes all required fields"""
-        serializer = TripSerializer(trip)
-        data = serializer.data
-        
-        required_fields = ['id', 'route', 'bus', 'departure_time', 'arrival_time', 
-                          'price', 'available_seats', 'status']
-        for field in required_fields:
-            assert field in data
-
-    def test_trip_search_serializer(self, trip):
-        """Test trip search serializer includes search-relevant fields"""
-        serializer = TripSearchSerializer(trip)
-        data = serializer.data
-        
-        assert 'origin' in data
-        assert 'destination' in data
-        assert 'company_name' in data
-        assert 'bus_type' in data
-```
-
----
-
-## Integration Tests
-
-### 1. Authentication Integration Tests (apps/accounts/tests/test_integration.py)
-
-```python
-import pytest
-from rest_framework import status
 from django.urls import reverse
 
 
 @pytest.mark.django_db
-class TestAuthenticationFlow:
-    """Integration tests for authentication flow"""
-
-    def test_full_registration_flow(self, api_client):
-        """Test complete registration flow"""
-        # Register
-        register_data = {
+class TestAuthEndpoints:
+    def test_register(self, api_client):
+        response = api_client.post('/api/v1/auth/register/', {
             'email': 'newuser@example.com',
-            'password': 'securepass123',
-            'confirm_password': 'securepass123',
-            'full_name': 'New User',
-            'phone': '08012345678'
-        }
-        response = api_client.post(reverse('register'), register_data)
-        assert response.status_code == status.HTTP_201_CREATED
-        assert 'tokens' in response.data
-        assert 'user' in response.data
-        
-        # Verify tokens are returned
-        assert 'access' in response.data['tokens']
-        assert 'refresh' in response.data['tokens']
-        
-        # Verify user data
-        assert response.data['user']['email'] == 'newuser@example.com'
-        assert 'passenger' in response.data['user']['roles']
-
-    def test_full_login_flow(self, api_client, create_user):
-        """Test complete login flow"""
-        create_user(email='login@example.com', password='testpass123')
-        
-        login_data = {'email': 'login@example.com', 'password': 'testpass123'}
-        response = api_client.post(reverse('login'), login_data)
-        
-        assert response.status_code == status.HTTP_200_OK
-        assert 'tokens' in response.data
-
-    def test_login_then_access_protected_route(self, api_client, create_user):
-        """Test login and access protected endpoint"""
-        create_user(email='protected@example.com', password='testpass123')
-        
-        # Login
-        login_data = {'email': 'protected@example.com', 'password': 'testpass123'}
-        login_response = api_client.post(reverse('login'), login_data)
-        token = login_response.data['tokens']['access']
-        
-        # Access protected route
-        api_client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
-        response = api_client.get(reverse('current-user'))
-        
-        assert response.status_code == status.HTTP_200_OK
-        assert response.data['email'] == 'protected@example.com'
-
-    def test_logout_invalidates_token(self, api_client, create_user):
-        """Test logout invalidates refresh token"""
-        create_user(email='logout@example.com', password='testpass123')
-        
-        # Login
-        login_data = {'email': 'logout@example.com', 'password': 'testpass123'}
-        login_response = api_client.post(reverse('login'), login_data)
-        access_token = login_response.data['tokens']['access']
-        refresh_token = login_response.data['tokens']['refresh']
-        
-        # Logout
-        api_client.credentials(HTTP_AUTHORIZATION=f'Bearer {access_token}')
-        logout_response = api_client.post(reverse('logout'), {'refresh_token': refresh_token})
-        
-        assert logout_response.status_code == status.HTTP_200_OK
-
-
-@pytest.mark.django_db
-class TestProfileIntegration:
-    """Integration tests for profile management"""
-
-    def test_get_and_update_profile(self, authenticated_client, passenger_user):
-        """Test getting and updating profile"""
-        # Get profile
-        response = authenticated_client.get(reverse('profile'))
-        assert response.status_code == status.HTTP_200_OK
-        
-        # Update profile
-        update_data = {'full_name': 'Updated Name', 'phone': '08099999999'}
-        response = authenticated_client.patch(reverse('profile'), update_data)
-        
-        assert response.status_code == status.HTTP_200_OK
-        assert response.data['full_name'] == 'Updated Name'
-        assert response.data['phone'] == '08099999999'
-```
-
-### 2. Booking Integration Tests (apps/bookings/tests/test_integration.py)
-
-```python
-import pytest
-from rest_framework import status
-from django.urls import reverse
-from django.utils import timezone
-from datetime import timedelta
-from apps.bookings.models import Booking, BookingStatus
-
-
-@pytest.mark.django_db
-class TestBookingFlow:
-    """Integration tests for complete booking flow"""
-
-    def test_complete_booking_flow(self, authenticated_client, trip, passenger_user):
-        """Test complete booking from search to confirmation"""
-        # Step 1: Search for trips
-        search_url = reverse('search-trips')
-        response = authenticated_client.get(search_url, {
-            'origin': 'Lagos',
-            'destination': 'Abuja',
-            'passengers': 2
+            'password': 'newpass123',
+            'password_confirm': 'newpass123',
+            'full_name': 'New User'
         })
-        assert response.status_code == status.HTTP_200_OK
-        assert len(response.data['results']) > 0
-        
-        trip_id = response.data['results'][0]['id']
-        
-        # Step 2: Get available seats
-        seats_url = reverse('get-trip-seats', kwargs={'trip_id': trip_id})
-        response = authenticated_client.get(seats_url)
-        assert response.status_code == status.HTTP_200_OK
-        
-        available_seats = [s['number'] for s in response.data['seats'] if s['is_available']][:2]
-        
-        # Step 3: Create booking
-        booking_data = {
-            'trip_id': str(trip_id),
-            'seats': available_seats,
-            'passengers': [
-                {'full_name': 'John Doe', 'phone': '08012345678', 
-                 'email': 'john@example.com', 'seat_number': available_seats[0]},
-                {'full_name': 'Jane Doe', 'phone': '08087654321', 
-                 'email': 'jane@example.com', 'seat_number': available_seats[1]}
-            ],
-            'passenger_name': 'John Doe',
-            'passenger_phone': '08012345678',
-            'passenger_email': 'john@example.com'
-        }
-        response = authenticated_client.post(reverse('create-booking'), booking_data, format='json')
-        assert response.status_code == status.HTTP_201_CREATED
-        
-        booking_id = response.data['id']
-        
-        # Step 4: Confirm payment
-        response = authenticated_client.post(
-            reverse('confirm-payment', kwargs={'booking_id': booking_id}),
-            {'payment_reference': 'PAY_12345'}
-        )
-        assert response.status_code == status.HTTP_200_OK
-        assert response.data['status'] == BookingStatus.CONFIRMED
-        
-        # Verify booking in my bookings
-        response = authenticated_client.get(reverse('my-bookings'))
-        assert response.status_code == status.HTTP_200_OK
-        assert any(b['id'] == str(booking_id) for b in response.data['results'])
-
-    def test_booking_reduces_available_seats(self, authenticated_client, trip):
-        """Test that booking reduces trip's available seats"""
-        initial_seats = trip.available_seats
-        
-        booking_data = {
-            'trip_id': str(trip.id),
-            'seats': ['1', '2'],
-            'passengers': [
-                {'full_name': 'P1', 'phone': '123', 'seat_number': '1'},
-                {'full_name': 'P2', 'phone': '456', 'seat_number': '2'}
-            ],
-            'passenger_name': 'P1',
-            'passenger_phone': '123',
-            'passenger_email': 'p1@example.com'
-        }
-        authenticated_client.post(reverse('create-booking'), booking_data, format='json')
-        
-        trip.refresh_from_db()
-        assert trip.available_seats == initial_seats - 2
-
-    def test_cancel_booking(self, authenticated_client, booking):
-        """Test booking cancellation"""
-        response = authenticated_client.post(
-            reverse('cancel-booking', kwargs={'booking_id': booking.id}),
-            {'reason': 'Change of plans'}
-        )
-        assert response.status_code == status.HTTP_200_OK
-        
-        booking.refresh_from_db()
-        assert booking.status == BookingStatus.CANCELLED
-        assert booking.cancellation_reason == 'Change of plans'
-
-    def test_cannot_double_book_seats(self, authenticated_client, trip):
-        """Test that same seats cannot be booked twice"""
-        booking_data = {
-            'trip_id': str(trip.id),
-            'seats': ['5'],
-            'passengers': [{'full_name': 'P1', 'phone': '123', 'seat_number': '5'}],
-            'passenger_name': 'P1',
-            'passenger_phone': '123',
-            'passenger_email': 'p1@example.com'
-        }
-        
-        # First booking should succeed
-        response = authenticated_client.post(reverse('create-booking'), booking_data, format='json')
-        assert response.status_code == status.HTTP_201_CREATED
-        
-        # Second booking for same seat should fail
-        response = authenticated_client.post(reverse('create-booking'), booking_data, format='json')
-        assert response.status_code == status.HTTP_400_BAD_REQUEST
-
-
-@pytest.mark.django_db
-class TestCompanyBookingsIntegration:
-    """Integration tests for company booking management"""
-
-    def test_company_can_view_their_bookings(self, company_admin_client, booking):
-        """Test company owner can view bookings for their trips"""
-        response = company_admin_client.get(reverse('company-bookings'))
-        assert response.status_code == status.HTTP_200_OK
-
-    def test_company_cannot_view_other_company_bookings(self, api_client, create_user, booking):
-        """Test company owner cannot see other company's bookings"""
-        other_company_user = create_user(email='other@company.com', role='company_admin')
-        api_client.force_authenticate(user=other_company_user)
-        
-        # Should return empty or not include the booking
-        response = api_client.get(reverse('company-bookings'))
-        assert response.status_code == status.HTTP_200_OK
-```
-
-### 3. Trips Integration Tests (apps/trips/tests/test_integration.py)
-
-```python
-import pytest
-from rest_framework import status
-from django.urls import reverse
-from django.utils import timezone
-from datetime import timedelta
-
-
-@pytest.mark.django_db
-class TestTripSearchIntegration:
-    """Integration tests for trip search functionality"""
-
-    def test_search_trips_by_origin_destination(self, api_client, trip):
-        """Test searching trips by origin and destination"""
-        response = api_client.get(reverse('search-trips'), {
-            'origin': 'Lagos',
-            'destination': 'Abuja'
+        assert response.status_code == 201
+        assert 'access' in response.data
+        assert 'refresh' in response.data
+    
+    def test_login(self, api_client, create_user):
+        create_user(email='login@example.com', password='loginpass')
+        response = api_client.post('/api/v1/auth/login/', {
+            'email': 'login@example.com',
+            'password': 'loginpass'
         })
-        assert response.status_code == status.HTTP_200_OK
-        assert len(response.data['results']) > 0
-
-    def test_search_trips_by_date(self, api_client, trip):
-        """Test searching trips by date"""
-        tomorrow = (timezone.now() + timedelta(days=1)).strftime('%Y-%m-%d')
-        response = api_client.get(reverse('search-trips'), {'date': tomorrow})
-        assert response.status_code == status.HTTP_200_OK
-
-    def test_search_excludes_past_trips(self, api_client, route, bus):
-        """Test that past trips are not returned in search"""
-        from apps.trips.models import Trip
-        
-        # Create a past trip
-        past_trip = Trip.objects.create(
-            route=route,
-            bus=bus,
-            departure_time=timezone.now() - timedelta(hours=1),
-            arrival_time=timezone.now() + timedelta(hours=7),
-            price=18000,
-            available_seats=48
-        )
-        
-        response = api_client.get(reverse('search-trips'))
-        trip_ids = [t['id'] for t in response.data['results']]
-        
-        assert str(past_trip.id) not in trip_ids
-
-    def test_search_excludes_trips_without_enough_seats(self, api_client, trip):
-        """Test that trips without enough seats are excluded"""
-        trip.available_seats = 1
-        trip.save()
-        
-        response = api_client.get(reverse('search-trips'), {'passengers': 5})
-        assert len(response.data['results']) == 0
-
-
-@pytest.mark.django_db
-class TestTripManagementIntegration:
-    """Integration tests for trip management by company"""
-
-    def test_company_crud_trip(self, company_admin_client, route, bus):
-        """Test complete CRUD for trips"""
-        # Create
-        trip_data = {
-            'route': str(route.id),
-            'bus': str(bus.id),
-            'departure_time': (timezone.now() + timedelta(days=2)).isoformat(),
-            'arrival_time': (timezone.now() + timedelta(days=2, hours=8)).isoformat(),
-            'price': 20000,
-            'available_seats': 48
-        }
-        response = company_admin_client.post(reverse('create-trip'), trip_data)
-        assert response.status_code == status.HTTP_201_CREATED
-        trip_id = response.data['id']
-        
-        # Read
-        response = company_admin_client.get(reverse('get-trip', kwargs={'trip_id': trip_id}))
-        assert response.status_code == status.HTTP_200_OK
-        
-        # Update
-        response = company_admin_client.patch(
-            reverse('update-trip', kwargs={'trip_id': trip_id}),
-            {'price': 22000}
-        )
-        assert response.status_code == status.HTTP_200_OK
-        assert float(response.data['price']) == 22000.00
-        
-        # Delete
-        response = company_admin_client.delete(
-            reverse('delete-trip', kwargs={'trip_id': trip_id})
-        )
-        assert response.status_code == status.HTTP_200_OK
+        assert response.status_code == 200
+        assert 'access' in response.data
+    
+    def test_me(self, authenticated_client):
+        client, user = authenticated_client
+        response = client.get('/api/v1/auth/me/')
+        assert response.status_code == 200
+        assert response.data['email'] == user.email
 ```
 
----
-
-## System Integration Tests
-
-### End-to-End Test Suite (tests/test_e2e.py)
-
-```python
-import pytest
-from rest_framework import status
-from django.urls import reverse
-from django.utils import timezone
-from datetime import timedelta
-from apps.accounts.models import AppRole
-from apps.trips.models import TripStatus
-from apps.bookings.models import BookingStatus
-
-
-@pytest.mark.django_db
-class TestEndToEndPassengerJourney:
-    """E2E tests simulating complete passenger journey"""
-
-    def test_passenger_complete_journey(self, api_client, trip, cities):
-        """Test complete passenger journey from registration to booking"""
-        # 1. Register as new passenger
-        register_data = {
-            'email': 'passenger@journey.com',
-            'password': 'securepass123',
-            'confirm_password': 'securepass123',
-            'full_name': 'Journey Passenger',
-            'phone': '08012345678'
-        }
-        response = api_client.post(reverse('register'), register_data)
-        assert response.status_code == status.HTTP_201_CREATED
-        access_token = response.data['tokens']['access']
-        
-        # 2. Set auth header for subsequent requests
-        api_client.credentials(HTTP_AUTHORIZATION=f'Bearer {access_token}')
-        
-        # 3. Browse available cities
-        response = api_client.get(reverse('list-cities'))
-        assert response.status_code == status.HTTP_200_OK
-        
-        # 4. Search for trips
-        response = api_client.get(reverse('search-trips'), {
-            'origin': 'Lagos',
-            'destination': 'Abuja',
-            'passengers': 1
-        })
-        assert response.status_code == status.HTTP_200_OK
-        
-        if len(response.data['results']) > 0:
-            trip_id = response.data['results'][0]['id']
-            
-            # 5. View trip details
-            response = api_client.get(reverse('get-trip', kwargs={'trip_id': trip_id}))
-            assert response.status_code == status.HTTP_200_OK
-            
-            # 6. Check available seats
-            response = api_client.get(reverse('get-trip-seats', kwargs={'trip_id': trip_id}))
-            assert response.status_code == status.HTTP_200_OK
-            
-            available = [s for s in response.data['seats'] if s['is_available']]
-            if available:
-                seat = available[0]['number']
-                
-                # 7. Create booking
-                booking_data = {
-                    'trip_id': trip_id,
-                    'seats': [seat],
-                    'passengers': [{
-                        'full_name': 'Journey Passenger',
-                        'phone': '08012345678',
-                        'email': 'passenger@journey.com',
-                        'seat_number': seat
-                    }],
-                    'passenger_name': 'Journey Passenger',
-                    'passenger_phone': '08012345678',
-                    'passenger_email': 'passenger@journey.com'
-                }
-                response = api_client.post(reverse('create-booking'), booking_data, format='json')
-                assert response.status_code == status.HTTP_201_CREATED
-                booking_id = response.data['id']
-                
-                # 8. Confirm payment
-                response = api_client.post(
-                    reverse('confirm-payment', kwargs={'booking_id': booking_id}),
-                    {'payment_reference': 'PAY_E2E_123'}
-                )
-                assert response.status_code == status.HTTP_200_OK
-                
-                # 9. View my bookings
-                response = api_client.get(reverse('my-bookings'))
-                assert response.status_code == status.HTTP_200_OK
-                assert len(response.data['results']) >= 1
-
-
-@pytest.mark.django_db
-class TestEndToEndCompanyJourney:
-    """E2E tests simulating complete company journey"""
-
-    def test_company_complete_journey(self, api_client, cities):
-        """Test complete company journey from registration to trip creation"""
-        # 1. Register company owner
-        register_data = {
-            'email': 'company@journey.com',
-            'password': 'companypass123',
-            'confirm_password': 'companypass123',
-            'full_name': 'Company Owner',
-            'phone': '08099999999'
-        }
-        response = api_client.post(reverse('register'), register_data)
-        assert response.status_code == status.HTTP_201_CREATED
-        access_token = response.data['tokens']['access']
-        user_id = response.data['user']['id']
-        
-        api_client.credentials(HTTP_AUTHORIZATION=f'Bearer {access_token}')
-        
-        # 2. Assign company_admin role (normally done by admin)
-        from apps.accounts.models import UserRole, AppRole
-        from django.contrib.auth import get_user_model
-        User = get_user_model()
-        user = User.objects.get(id=user_id)
-        UserRole.objects.create(user=user, role=AppRole.COMPANY_ADMIN)
-        
-        # 3. Create company
-        company_data = {
-            'name': 'Journey Transport',
-            'description': 'Best transport company'
-        }
-        response = api_client.post(reverse('create-company'), company_data)
-        assert response.status_code == status.HTTP_201_CREATED
-        company_id = response.data['id']
-        
-        # 4. Create bus
-        bus_data = {
-            'plate_number': 'JNY123AB',
-            'bus_type': 'luxury',
-            'total_seats': 48,
-            'amenities': ['AC', 'WiFi']
-        }
-        response = api_client.post(reverse('create-bus'), bus_data)
-        assert response.status_code == status.HTTP_201_CREATED
-        bus_id = response.data['id']
-        
-        # 5. Create route
-        route_data = {
-            'origin_city': str(cities['lagos'].id),
-            'destination_city': str(cities['abuja'].id),
-            'base_price': 15000,
-            'duration_hours': 8.5
-        }
-        response = api_client.post(reverse('create-route'), route_data)
-        assert response.status_code == status.HTTP_201_CREATED
-        route_id = response.data['id']
-        
-        # 6. Create trip
-        trip_data = {
-            'route': route_id,
-            'bus': bus_id,
-            'departure_time': (timezone.now() + timedelta(days=3)).isoformat(),
-            'arrival_time': (timezone.now() + timedelta(days=3, hours=8, minutes=30)).isoformat(),
-            'price': 18000,
-            'available_seats': 48
-        }
-        response = api_client.post(reverse('create-trip'), trip_data)
-        assert response.status_code == status.HTTP_201_CREATED
-        
-        # 7. View my trips
-        response = api_client.get(reverse('my-trips'))
-        assert response.status_code == status.HTTP_200_OK
-        assert len(response.data['results']) >= 1
-
-
-@pytest.mark.django_db
-class TestEndToEndAdminJourney:
-    """E2E tests simulating admin operations"""
-
-    def test_admin_complete_operations(self, admin_client, company, passenger_user):
-        """Test admin can perform all administrative operations"""
-        # 1. List all users
-        response = admin_client.get(reverse('list-users'))
-        assert response.status_code == status.HTTP_200_OK
-        
-        # 2. List all companies
-        response = admin_client.get(reverse('list-all-companies'))
-        assert response.status_code == status.HTTP_200_OK
-        
-        # 3. Verify a company
-        response = admin_client.patch(
-            reverse('verify-company', kwargs={'company_id': company.id}),
-            {'is_verified': True}
-        )
-        assert response.status_code == status.HTTP_200_OK
-        
-        # 4. View all bookings
-        response = admin_client.get(reverse('all-bookings'))
-        assert response.status_code == status.HTTP_200_OK
-        
-        # 5. Create a city
-        city_data = {'name': 'Kano', 'state': 'Kano'}
-        response = admin_client.post(reverse('create-city'), city_data)
-        assert response.status_code == status.HTTP_201_CREATED
-
-
-@pytest.mark.django_db
-class TestConcurrencyAndEdgeCases:
-    """Tests for concurrency and edge cases"""
-
-    def test_concurrent_booking_same_seat(self, api_client, create_user, trip):
-        """Test concurrent booking attempts for same seat"""
-        from concurrent.futures import ThreadPoolExecutor
-        import threading
-        
-        user1 = create_user(email='user1@concurrent.com')
-        user2 = create_user(email='user2@concurrent.com')
-        
-        results = []
-        lock = threading.Lock()
-        
-        def book_seat(user):
-            client = api_client.__class__()
-            client.force_authenticate(user=user)
-            
-            booking_data = {
-                'trip_id': str(trip.id),
-                'seats': ['10'],
-                'passengers': [{'full_name': 'Test', 'phone': '123', 'seat_number': '10'}],
-                'passenger_name': 'Test',
-                'passenger_phone': '123',
-                'passenger_email': f'{user.email}'
-            }
-            response = client.post(reverse('create-booking'), booking_data, format='json')
-            
-            with lock:
-                results.append(response.status_code)
-        
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            executor.submit(book_seat, user1)
-            executor.submit(book_seat, user2)
-            executor.shutdown(wait=True)
-        
-        # Only one should succeed
-        assert results.count(status.HTTP_201_CREATED) == 1
-        assert results.count(status.HTTP_400_BAD_REQUEST) == 1
-
-    def test_booking_hold_expiration(self, authenticated_client, trip):
-        """Test booking hold expiration behavior"""
-        from apps.bookings.models import Booking
-        
-        booking_data = {
-            'trip_id': str(trip.id),
-            'seats': ['15'],
-            'passengers': [{'full_name': 'Hold Test', 'phone': '123', 'seat_number': '15'}],
-            'passenger_name': 'Hold Test',
-            'passenger_phone': '123',
-            'passenger_email': 'hold@test.com'
-        }
-        response = authenticated_client.post(reverse('create-booking'), booking_data, format='json')
-        booking_id = response.data['id']
-        
-        # Simulate hold expiration
-        booking = Booking.objects.get(id=booking_id)
-        booking.hold_expires_at = timezone.now() - timedelta(minutes=1)
-        booking.save()
-        
-        # Run cleanup (would normally be a celery task)
-        from apps.bookings.tasks import expire_pending_bookings
-        expire_pending_bookings()
-        
-        booking.refresh_from_db()
-        assert booking.status == BookingStatus.EXPIRED
-```
-
----
-
-## Test Database Configuration
-
-### pytest.ini
-
-```ini
-[pytest]
-DJANGO_SETTINGS_MODULE = bus_booking.settings
-python_files = test_*.py
-python_classes = Test*
-python_functions = test_*
-addopts = -v --tb=short --strict-markers
-markers =
-    slow: marks tests as slow
-    integration: marks tests as integration tests
-    e2e: marks tests as end-to-end tests
-```
-
-### settings_test.py
-
-```python
-"""
-Test settings for faster test execution
-"""
-from .settings import *
-
-# Use in-memory SQLite for faster tests
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': ':memory:',
-    }
-}
-
-# Disable password hashing for speed
-PASSWORD_HASHERS = [
-    'django.contrib.auth.hashers.MD5PasswordHasher',
-]
-
-# Disable email sending
-EMAIL_BACKEND = 'django.core.mail.backends.locmem.EmailBackend'
-
-# Disable throttling in tests
-REST_FRAMEWORK['DEFAULT_THROTTLE_CLASSES'] = []
-REST_FRAMEWORK['DEFAULT_THROTTLE_RATES'] = {}
-
-# Simpler JWT settings for testing
-SIMPLE_JWT['ACCESS_TOKEN_LIFETIME'] = timedelta(hours=24)
-```
-
----
-
-## Running Tests
-
-### Test Commands
+### Run Tests
 
 ```bash
 # Run all tests
@@ -3350,71 +2424,30 @@ pytest
 # Run with coverage
 pytest --cov=apps --cov-report=html
 
-# Run only unit tests
-pytest -m "not integration and not e2e"
-
-# Run only integration tests
-pytest -m integration
-
-# Run only E2E tests
-pytest -m e2e
-
-# Run tests for specific app
-pytest apps/bookings/
-
-# Run with verbose output
-pytest -v
-
 # Run specific test file
-pytest apps/accounts/tests/test_unit.py
+pytest tests/test_unit/test_models.py
 
-# Run specific test class
-pytest apps/accounts/tests/test_unit.py::TestUserModel
-
-# Run specific test
-pytest apps/accounts/tests/test_unit.py::TestUserModel::test_create_user_success
-
-# Run tests in parallel (requires pytest-xdist)
+# Run in parallel
 pytest -n auto
-
-# Generate JUnit XML report (for CI/CD)
-pytest --junitxml=test-results.xml
 ```
 
 ---
 
-## CI/CD Pipeline (GitHub Actions)
-
-### .github/workflows/tests.yml
+## CI/CD Pipeline (.github/workflows/django.yml)
 
 ```yaml
-name: Django Tests
+name: Django CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main, develop]
   pull_request:
-    branches: [ main, develop ]
+    branches: [main]
 
 jobs:
   test:
     runs-on: ubuntu-latest
     
-    services:
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: test_db
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
     steps:
     - uses: actions/checkout@v4
     
@@ -3423,31 +2456,30 @@ jobs:
       with:
         python-version: '3.11'
     
+    - name: Cache pip packages
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+    
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        pip install pytest pytest-django pytest-cov pytest-xdist
     
     - name: Run migrations
       env:
-        DB_NAME: test_db
-        DB_USER: postgres
-        DB_PASSWORD: postgres
-        DB_HOST: localhost
-        DB_PORT: 5432
         DJANGO_SECRET_KEY: test-secret-key
+        DEBUG: 'True'
       run: |
         python manage.py migrate
     
     - name: Run tests
       env:
-        DB_NAME: test_db
-        DB_USER: postgres
-        DB_PASSWORD: postgres
-        DB_HOST: localhost
-        DB_PORT: 5432
         DJANGO_SECRET_KEY: test-secret-key
+        DEBUG: 'True'
       run: |
         pytest --cov=apps --cov-report=xml --junitxml=test-results.xml -n auto
     
@@ -3461,88 +2493,150 @@ jobs:
       with:
         name: test-results
         path: test-results.xml
+
+  lint:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install linters
+      run: |
+        pip install flake8 black isort
+    
+    - name: Run flake8
+      run: flake8 apps/ --max-line-length=120
+    
+    - name: Check black formatting
+      run: black --check apps/
+    
+    - name: Check import sorting
+      run: isort --check-only apps/
 ```
 
 ---
 
-## Celery Tasks for Background Jobs
+## Production Deployment Notes
 
-### apps/bookings/tasks.py
+### Database Options for Production
+
+SQLite is ideal for development and testing. For production, consider:
+
+**Option 1: PostgreSQL (Recommended)**
+```bash
+pip install psycopg2-binary
+```
 
 ```python
-from celery import shared_task
-from django.utils import timezone
-from .models import Booking, BookingStatus
+# settings.py
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': os.getenv('DB_NAME'),
+        'USER': os.getenv('DB_USER'),
+        'PASSWORD': os.getenv('DB_PASSWORD'),
+        'HOST': os.getenv('DB_HOST', 'localhost'),
+        'PORT': os.getenv('DB_PORT', '5432'),
+    }
+}
+```
 
+**Option 2: MySQL**
+```bash
+pip install mysqlclient
+```
 
-@shared_task
-def expire_pending_bookings():
-    """Task to expire bookings that have passed their hold time"""
-    expired_bookings = Booking.objects.filter(
-        status=BookingStatus.PENDING,
-        hold_expires_at__lt=timezone.now()
-    )
-    
-    count = 0
-    for booking in expired_bookings:
-        booking.status = BookingStatus.EXPIRED
-        booking.save()
-        
-        # Restore available seats
-        booking.trip.available_seats += len(booking.seats)
-        booking.trip.save()
-        
-        count += 1
-    
-    return f'Expired {count} bookings'
+```python
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.mysql',
+        'NAME': os.getenv('DB_NAME'),
+        'USER': os.getenv('DB_USER'),
+        'PASSWORD': os.getenv('DB_PASSWORD'),
+        'HOST': os.getenv('DB_HOST', 'localhost'),
+        'PORT': os.getenv('DB_PORT', '3306'),
+    }
+}
+```
 
+### WSGI Server Setup
 
-@shared_task
-def send_booking_confirmation_email(booking_id):
-    """Task to send booking confirmation email"""
-    from django.core.mail import send_mail
-    from django.conf import settings
-    
-    try:
-        booking = Booking.objects.select_related('trip__route__origin_city', 
-                                                  'trip__route__destination_city').get(id=booking_id)
-        
-        subject = f'Booking Confirmation - {booking.ticket_code}'
-        message = f'''
-        Dear {booking.passenger_name},
-        
-        Your booking has been confirmed!
-        
-        Ticket Code: {booking.ticket_code}
-        Route: {booking.trip.route.origin_city.name} → {booking.trip.route.destination_city.name}
-        Departure: {booking.trip.departure_time.strftime('%Y-%m-%d %H:%M')}
-        Seats: {', '.join(booking.seats)}
-        
-        Thank you for choosing our service!
-        '''
-        
-        send_mail(
-            subject=subject,
-            message=message,
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[booking.passenger_email],
-            fail_silently=False
-        )
-        
-        return f'Email sent for booking {booking_id}'
-    except Booking.DoesNotExist:
-        return f'Booking {booking_id} not found'
+```bash
+# Install gunicorn
+pip install gunicorn
+
+# Run with gunicorn
+gunicorn bus_booking.wsgi:application --bind 0.0.0.0:8000 --workers 4
+```
+
+### Nginx Configuration
+
+```nginx
+server {
+    listen 80;
+    server_name your-domain.com;
+
+    location /static/ {
+        alias /path/to/project/staticfiles/;
+    }
+
+    location /media/ {
+        alias /path/to/project/media/;
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+### Security Checklist
+
+- [ ] Set `DEBUG=False`
+- [ ] Generate strong `DJANGO_SECRET_KEY`
+- [ ] Configure `ALLOWED_HOSTS` properly
+- [ ] Set up HTTPS with SSL certificate
+- [ ] Configure proper CORS origins
+- [ ] Run `python manage.py check --deploy`
+- [ ] Collect static files: `python manage.py collectstatic`
+- [ ] Set up database backups
+- [ ] Configure logging and monitoring
+- [ ] Set up rate limiting
+
+### Deployment Commands
+
+```bash
+# Collect static files
+python manage.py collectstatic --noinput
+
+# Run migrations
+python manage.py migrate --noinput
+
+# Create superuser
+python manage.py createsuperuser
+
+# Security check
+python manage.py check --deploy
 ```
 
 ---
 
-## Notes for Integration
+## Frontend Integration Notes
 
-1. **JWT Tokens**: The React frontend should store JWT tokens securely and include them in API requests via the `Authorization: Bearer <token>` header.
+1. **JWT Tokens**: Store JWT tokens securely and include them in API requests via the `Authorization: Bearer <token>` header.
 
-2. **Pagination**: All list endpoints support pagination with `page` and `page_size` query parameters.
+2. **Pagination**: All list endpoints support pagination with `page` and `page_size` query parameters. Response includes `count`, `current_page`, `total_pages`, `next`, `previous`, and `results`.
 
-3. **Search/Filter**: Most list endpoints support search and filter query parameters.
+3. **Search/Filter**: Most list endpoints support search and filter query parameters (e.g., `?search=lagos`, `?company_id=xxx`).
 
 4. **Seat Selection**: The `/api/v1/trips/{id}/seats/` endpoint returns paginated seats for the booking page.
 
@@ -3550,8 +2644,10 @@ def send_booking_confirmation_email(booking_id):
 
 6. **Role-Based Access**: Three roles are supported - `admin`, `company_admin`, and `passenger`.
 
-7. **Test Coverage**: Aim for >80% test coverage. Unit tests for models/serializers, integration tests for API flows, E2E tests for complete user journeys.
+7. **API Response Format**: All responses use snake_case. Frontend mappers should convert to camelCase as needed.
 
-8. **Celery Tasks**: Background tasks handle booking expiration and email notifications.
+8. **Error Handling**: Errors return JSON with `error` key and appropriate HTTP status codes.
 
-This structure mirrors the current Supabase schema and provides a complete reference for future Django integration.
+---
+
+This structure mirrors the current Lovable Cloud schema and provides a complete reference for Django backend integration. The SQLite configuration enables quick local development while maintaining easy migration paths to production databases.
