@@ -1418,7 +1418,389 @@ def verify_company(request, company_id):
         return Response({'error': 'Company not found'}, status=status.HTTP_404_NOT_FOUND)
 ```
 
-### 4. Trips Views (apps/trips/views.py)
+### 4. Buses Views (apps/buses/views.py)
+
+```python
+from rest_framework import status
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+
+from .models import Bus
+from .serializers import BusSerializer, BusCreateSerializer
+from apps.accounts.models import AppRole
+from utils.permissions import IsCompanyOwner, IsOwnerOrAdmin
+from utils.pagination import StandardResultsPagination
+
+
+@api_view(['GET'])
+@permission_classes([IsCompanyOwner])
+def list_buses(request):
+    """List buses for a company"""
+    company = request.user.companies.first()
+    if not company:
+        return Response({'error': 'No company found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    buses = Bus.objects.filter(company=company)
+    
+    # Filter by company_id (for admin access)
+    company_id = request.query_params.get('company_id')
+    if company_id:
+        if request.user.roles.filter(role=AppRole.ADMIN).exists():
+            buses = Bus.objects.filter(company_id=company_id)
+        elif str(company.id) == company_id:
+            buses = Bus.objects.filter(company_id=company_id)
+        else:
+            return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+    
+    # Filter by active status
+    is_active = request.query_params.get('is_active')
+    if is_active is not None:
+        buses = buses.filter(is_active=is_active.lower() == 'true')
+    
+    # Search by plate number
+    search = request.query_params.get('search')
+    if search:
+        buses = buses.filter(plate_number__icontains=search)
+    
+    paginator = StandardResultsPagination()
+    result_page = paginator.paginate_queryset(buses, request)
+    serializer = BusSerializer(result_page, many=True)
+    return paginator.get_paginated_response(serializer.data)
+
+
+@api_view(['GET'])
+@permission_classes([IsCompanyOwner])
+def get_bus(request, bus_id):
+    """Get bus details"""
+    try:
+        bus = Bus.objects.select_related('company').get(id=bus_id)
+        
+        # Check ownership
+        if bus.company.owner != request.user and not request.user.roles.filter(role=AppRole.ADMIN).exists():
+            return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+        
+        return Response(BusSerializer(bus).data)
+    except Bus.DoesNotExist:
+        return Response({'error': 'Bus not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['POST'])
+@permission_classes([IsCompanyOwner])
+def create_bus(request):
+    """Create a new bus"""
+    company = request.user.companies.first()
+    if not company:
+        return Response({'error': 'No company found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    serializer = BusCreateSerializer(data=request.data)
+    if serializer.is_valid():
+        bus = serializer.save(company=company)
+        return Response(BusSerializer(bus).data, status=status.HTTP_201_CREATED)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['PUT', 'PATCH'])
+@permission_classes([IsCompanyOwner])
+def update_bus(request, bus_id):
+    """Update bus details"""
+    try:
+        bus = Bus.objects.select_related('company').get(id=bus_id)
+    except Bus.DoesNotExist:
+        return Response({'error': 'Bus not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    # Check ownership
+    if bus.company.owner != request.user and not request.user.roles.filter(role=AppRole.ADMIN).exists():
+        return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+    
+    serializer = BusSerializer(bus, data=request.data, partial=request.method == 'PATCH')
+    if serializer.is_valid():
+        serializer.save()
+        return Response(serializer.data)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['DELETE'])
+@permission_classes([IsCompanyOwner])
+def delete_bus(request, bus_id):
+    """Delete a bus"""
+    try:
+        bus = Bus.objects.select_related('company').get(id=bus_id)
+    except Bus.DoesNotExist:
+        return Response({'error': 'Bus not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    # Check ownership
+    if bus.company.owner != request.user and not request.user.roles.filter(role=AppRole.ADMIN).exists():
+        return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+    
+    # Check if bus has active trips
+    from apps.trips.models import Trip, TripStatus
+    active_trips = Trip.objects.filter(
+        bus=bus,
+        status__in=[TripStatus.SCHEDULED, TripStatus.BOARDING]
+    ).exists()
+    
+    if active_trips:
+        return Response(
+            {'error': 'Cannot delete bus with active trips'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    bus.delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(['PATCH'])
+@permission_classes([IsCompanyOwner])
+def toggle_bus_status(request, bus_id):
+    """Toggle bus active status"""
+    try:
+        bus = Bus.objects.select_related('company').get(id=bus_id)
+    except Bus.DoesNotExist:
+        return Response({'error': 'Bus not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    # Check ownership
+    if bus.company.owner != request.user:
+        return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+    
+    bus.is_active = not bus.is_active
+    bus.save()
+    return Response(BusSerializer(bus).data)
+```
+
+### 5. Routes Views (apps/routes/views.py)
+
+```python
+from rest_framework import status
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.response import Response
+
+from .models import Route
+from .serializers import RouteSerializer
+from apps.cities.models import City
+from apps.accounts.models import AppRole
+from utils.permissions import IsCompanyOwner, IsOwnerOrAdmin
+from utils.pagination import StandardResultsPagination
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def list_routes(request):
+    """List routes (public for searching, filtered for company owners)"""
+    routes = Route.objects.filter(is_active=True).select_related(
+        'origin_city', 'destination_city', 'company'
+    )
+    
+    # Filter by company_id
+    company_id = request.query_params.get('company_id')
+    if company_id:
+        routes = Route.objects.filter(company_id=company_id).select_related(
+            'origin_city', 'destination_city', 'company'
+        )
+    
+    # Filter by origin city
+    origin_city_id = request.query_params.get('origin_city_id')
+    if origin_city_id:
+        routes = routes.filter(origin_city_id=origin_city_id)
+    
+    # Filter by destination city
+    destination_city_id = request.query_params.get('destination_city_id')
+    if destination_city_id:
+        routes = routes.filter(destination_city_id=destination_city_id)
+    
+    # Filter by active status (for company owners)
+    is_active = request.query_params.get('is_active')
+    if is_active is not None:
+        routes = routes.filter(is_active=is_active.lower() == 'true')
+    
+    paginator = StandardResultsPagination()
+    result_page = paginator.paginate_queryset(routes, request)
+    serializer = RouteSerializer(result_page, many=True)
+    return paginator.get_paginated_response(serializer.data)
+
+
+@api_view(['GET'])
+@permission_classes([IsCompanyOwner])
+def my_routes(request):
+    """Get routes for current user's company"""
+    company = request.user.companies.first()
+    if not company:
+        return Response({'error': 'No company found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    routes = Route.objects.filter(company=company).select_related(
+        'origin_city', 'destination_city'
+    )
+    
+    # Filter by active status
+    is_active = request.query_params.get('is_active')
+    if is_active is not None:
+        routes = routes.filter(is_active=is_active.lower() == 'true')
+    
+    paginator = StandardResultsPagination()
+    result_page = paginator.paginate_queryset(routes, request)
+    serializer = RouteSerializer(result_page, many=True)
+    return paginator.get_paginated_response(serializer.data)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def get_route(request, route_id):
+    """Get route details"""
+    try:
+        route = Route.objects.select_related(
+            'origin_city', 'destination_city', 'company'
+        ).get(id=route_id)
+        return Response(RouteSerializer(route).data)
+    except Route.DoesNotExist:
+        return Response({'error': 'Route not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['POST'])
+@permission_classes([IsCompanyOwner])
+def create_route(request):
+    """Create a new route"""
+    company = request.user.companies.first()
+    if not company:
+        return Response({'error': 'No company found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    # Validate cities exist
+    origin_city_id = request.data.get('origin_city_id')
+    destination_city_id = request.data.get('destination_city_id')
+    
+    if origin_city_id == destination_city_id:
+        return Response(
+            {'error': 'Origin and destination cities must be different'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    try:
+        origin_city = City.objects.get(id=origin_city_id)
+        destination_city = City.objects.get(id=destination_city_id)
+    except City.DoesNotExist:
+        return Response({'error': 'Invalid city ID'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Check for duplicate route
+    existing_route = Route.objects.filter(
+        company=company,
+        origin_city=origin_city,
+        destination_city=destination_city
+    ).exists()
+    
+    if existing_route:
+        return Response(
+            {'error': 'Route already exists for this company'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    route = Route.objects.create(
+        company=company,
+        origin_city=origin_city,
+        destination_city=destination_city,
+        base_price=request.data.get('base_price'),
+        duration_hours=request.data.get('duration_hours'),
+        is_active=request.data.get('is_active', True)
+    )
+    
+    return Response(RouteSerializer(route).data, status=status.HTTP_201_CREATED)
+
+
+@api_view(['PUT', 'PATCH'])
+@permission_classes([IsCompanyOwner])
+def update_route(request, route_id):
+    """Update route details"""
+    try:
+        route = Route.objects.select_related('company').get(id=route_id)
+    except Route.DoesNotExist:
+        return Response({'error': 'Route not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    # Check ownership
+    if route.company.owner != request.user and not request.user.roles.filter(role=AppRole.ADMIN).exists():
+        return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+    
+    # Handle city updates
+    origin_city_id = request.data.get('origin_city_id')
+    destination_city_id = request.data.get('destination_city_id')
+    
+    if origin_city_id:
+        try:
+            route.origin_city = City.objects.get(id=origin_city_id)
+        except City.DoesNotExist:
+            return Response({'error': 'Invalid origin city ID'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    if destination_city_id:
+        try:
+            route.destination_city = City.objects.get(id=destination_city_id)
+        except City.DoesNotExist:
+            return Response({'error': 'Invalid destination city ID'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    if route.origin_city == route.destination_city:
+        return Response(
+            {'error': 'Origin and destination cities must be different'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Update other fields
+    if 'base_price' in request.data:
+        route.base_price = request.data['base_price']
+    if 'duration_hours' in request.data:
+        route.duration_hours = request.data['duration_hours']
+    if 'is_active' in request.data:
+        route.is_active = request.data['is_active']
+    
+    route.save()
+    return Response(RouteSerializer(route).data)
+
+
+@api_view(['DELETE'])
+@permission_classes([IsCompanyOwner])
+def delete_route(request, route_id):
+    """Delete a route"""
+    try:
+        route = Route.objects.select_related('company').get(id=route_id)
+    except Route.DoesNotExist:
+        return Response({'error': 'Route not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    # Check ownership
+    if route.company.owner != request.user and not request.user.roles.filter(role=AppRole.ADMIN).exists():
+        return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+    
+    # Check if route has active trips
+    from apps.trips.models import Trip, TripStatus
+    active_trips = Trip.objects.filter(
+        route=route,
+        status__in=[TripStatus.SCHEDULED, TripStatus.BOARDING]
+    ).exists()
+    
+    if active_trips:
+        return Response(
+            {'error': 'Cannot delete route with active trips'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    route.delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(['PATCH'])
+@permission_classes([IsCompanyOwner])
+def toggle_route_status(request, route_id):
+    """Toggle route active status"""
+    try:
+        route = Route.objects.select_related('company').get(id=route_id)
+    except Route.DoesNotExist:
+        return Response({'error': 'Route not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    # Check ownership
+    if route.company.owner != request.user:
+        return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+    
+    route.is_active = not route.is_active
+    route.save()
+    return Response(RouteSerializer(route).data)
+```
+
+### 6. Trips Views (apps/trips/views.py)
 
 ```python
 from rest_framework import status
@@ -1879,11 +2261,11 @@ from . import views
 
 urlpatterns = [
     path('', views.list_buses, name='list-buses'),
-    path('my/', views.my_buses, name='my-buses'),
     path('<uuid:bus_id>/', views.get_bus, name='get-bus'),
     path('create/', views.create_bus, name='create-bus'),
     path('<uuid:bus_id>/update/', views.update_bus, name='update-bus'),
     path('<uuid:bus_id>/delete/', views.delete_bus, name='delete-bus'),
+    path('<uuid:bus_id>/toggle-status/', views.toggle_bus_status, name='toggle-bus-status'),
 ]
 ```
 
@@ -1900,6 +2282,7 @@ urlpatterns = [
     path('create/', views.create_route, name='create-route'),
     path('<uuid:route_id>/update/', views.update_route, name='update-route'),
     path('<uuid:route_id>/delete/', views.delete_route, name='delete-route'),
+    path('<uuid:route_id>/toggle-status/', views.toggle_route_status, name='toggle-route-status'),
 ]
 ```
 
@@ -1973,19 +2356,20 @@ urlpatterns = [
 | `/api/v1/companies/{id}/update/` | PUT, PATCH | Update company | Owner |
 | `/api/v1/companies/{id}/verify/` | PATCH | Verify company (Admin) | Admin |
 | **Buses** |
-| `/api/v1/buses/` | GET | List buses | No |
-| `/api/v1/buses/my/` | GET | My company's buses | Owner |
-| `/api/v1/buses/{id}/` | GET | Get bus | No |
+| `/api/v1/buses/` | GET | List buses (filter by company_id) | Owner |
+| `/api/v1/buses/{id}/` | GET | Get bus details | Owner |
 | `/api/v1/buses/create/` | POST | Create bus | Owner |
 | `/api/v1/buses/{id}/update/` | PUT, PATCH | Update bus | Owner |
 | `/api/v1/buses/{id}/delete/` | DELETE | Delete bus | Owner |
+| `/api/v1/buses/{id}/toggle-status/` | PATCH | Toggle bus active status | Owner |
 | **Routes** |
-| `/api/v1/routes/` | GET | List routes | No |
+| `/api/v1/routes/` | GET | List routes (filter by company_id) | No |
 | `/api/v1/routes/my/` | GET | My company's routes | Owner |
-| `/api/v1/routes/{id}/` | GET | Get route | No |
+| `/api/v1/routes/{id}/` | GET | Get route details | No |
 | `/api/v1/routes/create/` | POST | Create route | Owner |
 | `/api/v1/routes/{id}/update/` | PUT, PATCH | Update route | Owner |
 | `/api/v1/routes/{id}/delete/` | DELETE | Delete route | Owner |
+| `/api/v1/routes/{id}/toggle-status/` | PATCH | Toggle route active status | Owner |
 | **Trips** |
 | `/api/v1/trips/search/` | GET | Search trips | No |
 | `/api/v1/trips/my/` | GET | My company's trips | Owner |
