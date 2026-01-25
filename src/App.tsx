@@ -19,6 +19,7 @@ import PopularRoutesPage from "./pages/PopularRoutes";
 import HelpCenter from "./pages/HelpCenter";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import TermsOfService from "./pages/TermsOfService";
+import AboutUs from "./pages/AboutUs";
 import Dashboard from "./pages/company/Dashboard";
 import Overview from "./pages/company/Overview";
 import Buses from "./pages/company/Buses";
@@ -58,6 +59,7 @@ const App = () => (
             <Route path="/help" element={<HelpCenter />} />
             <Route path="/privacy" element={<PrivacyPolicy />} />
             <Route path="/terms" element={<TermsOfService />} />
+            <Route path="/about" element={<AboutUs />} />
             <Route path="/company/register" element={<CompanyRegister />} />
             <Route path="/company/login" element={<CompanyRegister />} />
             <Route path="/company/dashboard" element={<Dashboard />}>
