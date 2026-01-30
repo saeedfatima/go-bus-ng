@@ -1,10 +1,29 @@
 # Django Backend Structure for Bus Booking System
 
-This document outlines the complete Django REST Framework backend structure for future integration. The setup uses SQLite for simplicity during development with easy migration to PostgreSQL for production.
+This document outlines the complete Django REST Framework backend structure designed to integrate seamlessly with the React frontend. The API contract aligns with `src/services/api/interfaces.ts` and `src/services/api/types.ts`.
 
 ---
 
-## Quick Start (5 minutes)
+## Table of Contents
+
+1. [Quick Start](#quick-start)
+2. [Frontend Integration Contract](#frontend-integration-contract)
+3. [API Response Format Standards](#api-response-format-standards)
+4. [Project Structure](#project-structure)
+5. [Requirements](#requirements)
+6. [Settings Configuration](#settings-configuration)
+7. [Models](#models)
+8. [Serializers](#serializers)
+9. [Views](#views)
+10. [URL Configuration](#url-configuration)
+11. [API Endpoints Summary](#api-endpoints-summary)
+12. [Background Tasks](#background-tasks)
+13. [Testing](#testing)
+14. [Production Deployment](#production-deployment)
+
+---
+
+## Quick Start
 
 ### Prerequisites
 - Python 3.10+
@@ -50,6 +69,261 @@ python manage.py runserver
 
 ---
 
+## Frontend Integration Contract
+
+This section defines the exact contract between the Django backend and the React frontend. The frontend expects responses that match the interfaces defined in `src/services/api/types.ts`.
+
+### Field Naming Convention
+
+The frontend uses **camelCase** while Django uses **snake_case**. The frontend client (`src/services/api/django/index.ts`) handles the mapping.
+
+| Frontend (camelCase) | Django (snake_case) |
+|---------------------|---------------------|
+| `fullName` | `full_name` |
+| `createdAt` | `created_at` |
+| `updatedAt` | `updated_at` |
+| `logoUrl` | `logo_url` |
+| `totalTrips` | `total_trips` |
+| `isVerified` | `is_verified` |
+| `ownerId` | `owner_id` |
+| `companyId` | `company_id` |
+| `plateNumber` | `plate_number` |
+| `busType` | `bus_type` |
+| `totalSeats` | `total_seats` |
+| `isActive` | `is_active` |
+| `originCityId` | `origin_city_id` |
+| `destinationCityId` | `destination_city_id` |
+| `originCity` | `origin_city` |
+| `destinationCity` | `destination_city` |
+| `basePrice` | `base_price` |
+| `durationHours` | `duration_hours` |
+| `routeId` | `route_id` |
+| `busId` | `bus_id` |
+| `departureTime` | `departure_time` |
+| `arrivalTime` | `arrival_time` |
+| `availableSeats` | `available_seats` |
+| `tripId` | `trip_id` |
+| `userId` | `user_id` |
+| `totalAmount` | `total_amount` |
+| `passengerName` | `passenger_name` |
+| `passengerEmail` | `passenger_email` |
+| `passengerPhone` | `passenger_phone` |
+| `ticketCode` | `ticket_code` |
+| `holdExpiresAt` | `hold_expires_at` |
+| `paymentCompletedAt` | `payment_completed_at` |
+| `cancelledAt` | `cancelled_at` |
+| `cancellationReason` | `cancellation_reason` |
+| `bookingId` | `booking_id` |
+| `seatNumber` | `seat_number` |
+
+### Required Response Structures
+
+#### ApiUser (Authentication)
+```json
+{
+  "id": "uuid",
+  "email": "string",
+  "full_name": "string | null",
+  "phone": "string | null",
+  "created_at": "ISO8601 datetime"
+}
+```
+
+#### ApiSession (Login/Register Response)
+```json
+{
+  "access": "JWT access token",
+  "refresh": "JWT refresh token",
+  "user": { /* ApiUser object */ }
+}
+```
+
+#### ApiCity
+```json
+{
+  "id": "uuid",
+  "name": "string",
+  "state": "string"
+}
+```
+
+#### ApiCompany
+```json
+{
+  "id": "uuid",
+  "name": "string",
+  "description": "string | null",
+  "logo_url": "string | null",
+  "rating": "number (0-5)",
+  "total_trips": "integer",
+  "is_verified": "boolean",
+  "owner_id": "uuid",
+  "created_at": "ISO8601 datetime",
+  "updated_at": "ISO8601 datetime"
+}
+```
+
+#### ApiBus
+```json
+{
+  "id": "uuid",
+  "company_id": "uuid",
+  "plate_number": "string",
+  "bus_type": "standard | luxury | executive",
+  "total_seats": "integer",
+  "amenities": ["string array"],
+  "is_active": "boolean",
+  "created_at": "ISO8601 datetime",
+  "updated_at": "ISO8601 datetime"
+}
+```
+
+#### ApiRoute
+```json
+{
+  "id": "uuid",
+  "company_id": "uuid",
+  "origin_city_id": "uuid",
+  "destination_city_id": "uuid",
+  "origin_city": { /* ApiCity object */ },
+  "destination_city": { /* ApiCity object */ },
+  "base_price": "decimal",
+  "duration_hours": "decimal",
+  "is_active": "boolean",
+  "created_at": "ISO8601 datetime",
+  "updated_at": "ISO8601 datetime"
+}
+```
+
+#### ApiTrip
+```json
+{
+  "id": "uuid",
+  "route_id": "uuid",
+  "bus_id": "uuid",
+  "departure_time": "ISO8601 datetime",
+  "arrival_time": "ISO8601 datetime",
+  "price": "decimal",
+  "available_seats": "integer",
+  "status": "scheduled | boarding | departed | arrived | cancelled",
+  "route": { /* ApiRoute object */ },
+  "bus": { /* ApiBus object */ },
+  "company": { /* ApiCompany object */ },
+  "created_at": "ISO8601 datetime",
+  "updated_at": "ISO8601 datetime"
+}
+```
+
+#### ApiBooking
+```json
+{
+  "id": "uuid",
+  "trip_id": "uuid",
+  "user_id": "uuid",
+  "seats": ["string array"],
+  "total_amount": "decimal",
+  "passenger_name": "string",
+  "passenger_email": "string",
+  "passenger_phone": "string",
+  "ticket_code": "string",
+  "status": "pending | confirmed | cancelled | expired",
+  "hold_expires_at": "ISO8601 datetime | null",
+  "payment_completed_at": "ISO8601 datetime | null",
+  "cancelled_at": "ISO8601 datetime | null",
+  "cancellation_reason": "string | null",
+  "trip": { /* ApiTrip object */ },
+  "passengers": [{ /* ApiPassenger objects */ }],
+  "created_at": "ISO8601 datetime",
+  "updated_at": "ISO8601 datetime"
+}
+```
+
+#### ApiPassenger
+```json
+{
+  "id": "uuid",
+  "booking_id": "uuid",
+  "full_name": "string",
+  "phone": "string",
+  "email": "string | null",
+  "nin": "string | null",
+  "seat_number": "string",
+  "created_at": "ISO8601 datetime"
+}
+```
+
+#### ApiProfile
+```json
+{
+  "id": "uuid",
+  "full_name": "string | null",
+  "phone": "string | null",
+  "created_at": "ISO8601 datetime",
+  "updated_at": "ISO8601 datetime"
+}
+```
+
+#### ApiUserRole
+```json
+{
+  "id": "uuid",
+  "user_id": "uuid",
+  "role": "admin | company_admin | passenger"
+}
+```
+
+---
+
+## API Response Format Standards
+
+### Paginated List Response
+All list endpoints return paginated responses:
+
+```json
+{
+  "count": 100,
+  "current_page": 1,
+  "page_size": 10,
+  "total_pages": 10,
+  "next": "http://api/endpoint/?page=2",
+  "previous": null,
+  "results": [/* array of items */]
+}
+```
+
+**Frontend mapping** (`ApiListResult<T>`):
+- `count` → `total`
+- `current_page` → `page`
+- `page_size` → `limit`
+- `results` → `data`
+
+### Error Response
+```json
+{
+  "error": "Human-readable error message",
+  "detail": "Optional detailed explanation"
+}
+```
+
+For validation errors:
+```json
+{
+  "field_name": ["Error message 1", "Error message 2"],
+  "another_field": ["Error message"]
+}
+```
+
+### Query Parameters
+
+| Parameter | Description | Example |
+|-----------|-------------|---------|
+| `page` | Page number (1-indexed) | `?page=2` |
+| `page_size` | Items per page (max 100) | `?page_size=20` |
+| `ordering` | Sort field, prefix `-` for desc | `?ordering=-created_at` |
+| `search` | Search term | `?search=lagos` |
+
+---
+
 ## Project Structure
 
 ```
@@ -77,14 +351,10 @@ bus_booking_backend/
 │   │   ├── views.py
 │   │   ├── urls.py
 │   │   ├── permissions.py
-│   │   ├── management/
-│   │   │   └── commands/
-│   │   │       └── create_default_roles.py
 │   │   └── tests.py
 │   ├── companies/                  # Company management
 │   │   ├── __init__.py
 │   │   ├── admin.py
-│   │   ├── apps.py
 │   │   ├── models.py
 │   │   ├── serializers.py
 │   │   ├── views.py
@@ -92,8 +362,6 @@ bus_booking_backend/
 │   │   └── tests.py
 │   ├── buses/                      # Bus management
 │   │   ├── __init__.py
-│   │   ├── admin.py
-│   │   ├── apps.py
 │   │   ├── models.py
 │   │   ├── serializers.py
 │   │   ├── views.py
@@ -101,8 +369,6 @@ bus_booking_backend/
 │   │   └── tests.py
 │   ├── routes/                     # Route management
 │   │   ├── __init__.py
-│   │   ├── admin.py
-│   │   ├── apps.py
 │   │   ├── models.py
 │   │   ├── serializers.py
 │   │   ├── views.py
@@ -110,8 +376,6 @@ bus_booking_backend/
 │   │   └── tests.py
 │   ├── trips/                      # Trip management
 │   │   ├── __init__.py
-│   │   ├── admin.py
-│   │   ├── apps.py
 │   │   ├── models.py
 │   │   ├── serializers.py
 │   │   ├── views.py
@@ -119,22 +383,24 @@ bus_booking_backend/
 │   │   └── tests.py
 │   ├── bookings/                   # Booking management
 │   │   ├── __init__.py
-│   │   ├── admin.py
-│   │   ├── apps.py
 │   │   ├── models.py
 │   │   ├── serializers.py
 │   │   ├── views.py
 │   │   ├── urls.py
-│   │   ├── pagination.py
 │   │   ├── management/
 │   │   │   └── commands/
 │   │   │       ├── expire_bookings.py
 │   │   │       └── send_reminders.py
 │   │   └── tests.py
-│   └── cities/                     # City management
+│   ├── cities/                     # City management
+│   │   ├── __init__.py
+│   │   ├── models.py
+│   │   ├── serializers.py
+│   │   ├── views.py
+│   │   ├── urls.py
+│   │   └── tests.py
+│   └── profiles/                   # User profiles
 │       ├── __init__.py
-│       ├── admin.py
-│       ├── apps.py
 │       ├── models.py
 │       ├── serializers.py
 │       ├── views.py
@@ -214,6 +480,7 @@ INSTALLED_APPS = [
     'apps.trips',
     'apps.bookings',
     'apps.cities',
+    'apps.profiles',
 ]
 
 MIDDLEWARE = [
@@ -279,8 +546,11 @@ DATABASES = {
     }
 }
 
-# CORS
-CORS_ALLOWED_ORIGINS = os.getenv('CORS_ORIGINS', 'http://localhost:3000,http://localhost:5173,http://localhost:8080').split(',')
+# CORS - Allow frontend origins
+CORS_ALLOWED_ORIGINS = os.getenv(
+    'CORS_ORIGINS', 
+    'http://localhost:3000,http://localhost:5173,http://localhost:8080'
+).split(',')
 CORS_ALLOW_CREDENTIALS = True
 
 # Static files
@@ -291,45 +561,16 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 MEDIA_URL = 'media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
-# Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# Email (optional)
-EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'  # Dev
-# EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'  # Production
+# Email (console backend for development)
+EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
 EMAIL_PORT = int(os.getenv('EMAIL_PORT', 587))
 EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
 EMAIL_USE_TLS = True
 DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'noreply@busbooking.com')
-```
-
----
-
-## Test Settings (bus_booking/settings_test.py)
-
-```python
-from .settings import *
-
-# Use in-memory SQLite for faster tests
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': ':memory:',
-    }
-}
-
-# Faster password hashing for tests
-PASSWORD_HASHERS = [
-    'django.contrib.auth.hashers.MD5PasswordHasher',
-]
-
-# Disable debug mode
-DEBUG = False
-
-# Disable logging during tests
-LOGGING = {}
 ```
 
 ---
@@ -400,9 +641,21 @@ class UserRole(models.Model):
 
     def __str__(self):
         return f"{self.user.email} - {self.role}"
+```
+
+### 2. Profiles App (apps/profiles/models.py)
+
+```python
+import uuid
+from django.db import models
+from apps.accounts.models import User
 
 
 class Profile(models.Model):
+    """
+    Separate profile model for additional user data.
+    Matches frontend ApiProfile interface.
+    """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
     full_name = models.CharField(max_length=255, blank=True, null=True)
@@ -417,7 +670,7 @@ class Profile(models.Model):
         return f"Profile: {self.user.email}"
 ```
 
-### 2. Cities App (apps/cities/models.py)
+### 3. Cities App (apps/cities/models.py)
 
 ```python
 import uuid
@@ -439,7 +692,7 @@ class City(models.Model):
         return f"{self.name}, {self.state}"
 ```
 
-### 3. Companies App (apps/companies/models.py)
+### 4. Companies App (apps/companies/models.py)
 
 ```python
 import uuid
@@ -468,7 +721,7 @@ class Company(models.Model):
         return self.name
 ```
 
-### 4. Buses App (apps/buses/models.py)
+### 5. Buses App (apps/buses/models.py)
 
 ```python
 import uuid
@@ -488,8 +741,7 @@ class Bus(models.Model):
     plate_number = models.CharField(max_length=20, unique=True)
     bus_type = models.CharField(max_length=20, choices=BusType.choices, default=BusType.STANDARD)
     total_seats = models.IntegerField(default=48)
-    # JSONField is database-agnostic (works with SQLite, PostgreSQL, MySQL)
-    amenities = models.JSONField(default=list, blank=True)
+    amenities = models.JSONField(default=list, blank=True)  # Database-agnostic
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -503,7 +755,7 @@ class Bus(models.Model):
         return f"{self.plate_number} - {self.company.name}"
 ```
 
-### 5. Routes App (apps/routes/models.py)
+### 6. Routes App (apps/routes/models.py)
 
 ```python
 import uuid
@@ -531,7 +783,7 @@ class Route(models.Model):
         return f"{self.origin_city.name} → {self.destination_city.name}"
 ```
 
-### 6. Trips App (apps/trips/models.py)
+### 7. Trips App (apps/trips/models.py)
 
 ```python
 import uuid
@@ -572,7 +824,7 @@ class Trip(models.Model):
         return self.route.company
 ```
 
-### 7. Bookings App (apps/bookings/models.py)
+### 8. Bookings App (apps/bookings/models.py)
 
 ```python
 import uuid
@@ -591,15 +843,16 @@ class BookingStatus(models.TextChoices):
 
 
 def generate_ticket_code():
-    return ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
+    """Generate unique ticket code matching frontend format: NB-XXXXXXXX"""
+    chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+    return 'NB-' + ''.join(random.choices(chars, k=8))
 
 
 class Booking(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     trip = models.ForeignKey(Trip, on_delete=models.CASCADE, related_name='bookings')
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='bookings')
-    # JSONField is database-agnostic (works with SQLite, PostgreSQL, MySQL)
-    seats = models.JSONField(default=list)
+    seats = models.JSONField(default=list)  # Array of seat numbers
     total_amount = models.DecimalField(max_digits=10, decimal_places=2)
     status = models.CharField(max_length=20, choices=BookingStatus.choices, default=BookingStatus.PENDING)
     ticket_code = models.CharField(max_length=20, unique=True, default=generate_ticket_code)
@@ -622,6 +875,7 @@ class Booking(models.Model):
 
 
 class BookingPassenger(models.Model):
+    """Individual passengers for multi-passenger bookings"""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     booking = models.ForeignKey(Booking, on_delete=models.CASCADE, related_name='passengers')
     full_name = models.CharField(max_length=255)
@@ -648,10 +902,15 @@ class BookingPassenger(models.Model):
 ```python
 from rest_framework import serializers
 from django.contrib.auth import authenticate
-from .models import User, UserRole, Profile, AppRole
+from .models import User, UserRole, AppRole
+from apps.profiles.models import Profile
 
 
 class RegisterSerializer(serializers.ModelSerializer):
+    """
+    Registration serializer matching frontend signUp interface.
+    Creates user, profile, and assigns passenger role.
+    """
     password = serializers.CharField(write_only=True, min_length=8)
     password_confirm = serializers.CharField(write_only=True)
 
@@ -693,33 +952,38 @@ class LoginSerializer(serializers.Serializer):
 
 
 class UserSerializer(serializers.ModelSerializer):
-    roles = serializers.SerializerMethodField()
-
+    """Matches frontend ApiUser interface"""
+    
     class Meta:
         model = User
-        fields = ['id', 'email', 'full_name', 'phone', 'is_active', 'created_at', 'updated_at']
-
-    def get_roles(self, obj):
-        return [role.role for role in obj.roles.all()]
+        fields = ['id', 'email', 'full_name', 'phone', 'created_at']
 
 
 class UserRoleSerializer(serializers.ModelSerializer):
+    """Matches frontend ApiUserRole interface"""
     user_id = serializers.UUIDField(source='user.id', read_only=True)
 
     class Meta:
         model = UserRole
         fields = ['id', 'user_id', 'role']
+```
+
+### 2. Profiles Serializers (apps/profiles/serializers.py)
+
+```python
+from rest_framework import serializers
+from .models import Profile
 
 
 class ProfileSerializer(serializers.ModelSerializer):
-    user_id = serializers.UUIDField(source='user.id', read_only=True)
+    """Matches frontend ApiProfile interface"""
 
     class Meta:
         model = Profile
-        fields = ['id', 'user_id', 'full_name', 'phone', 'created_at', 'updated_at']
+        fields = ['id', 'full_name', 'phone', 'created_at', 'updated_at']
 ```
 
-### 2. Cities Serializers (apps/cities/serializers.py)
+### 3. Cities Serializers (apps/cities/serializers.py)
 
 ```python
 from rest_framework import serializers
@@ -727,12 +991,14 @@ from .models import City
 
 
 class CitySerializer(serializers.ModelSerializer):
+    """Matches frontend ApiCity interface"""
+    
     class Meta:
         model = City
-        fields = ['id', 'name', 'state', 'created_at']
+        fields = ['id', 'name', 'state']
 ```
 
-### 3. Companies Serializers (apps/companies/serializers.py)
+### 4. Companies Serializers (apps/companies/serializers.py)
 
 ```python
 from rest_framework import serializers
@@ -740,6 +1006,7 @@ from .models import Company
 
 
 class CompanySerializer(serializers.ModelSerializer):
+    """Matches frontend ApiCompany interface"""
     owner_id = serializers.UUIDField(source='owner.id', read_only=True)
 
     class Meta:
@@ -751,6 +1018,8 @@ class CompanySerializer(serializers.ModelSerializer):
 
 
 class CompanyCreateSerializer(serializers.ModelSerializer):
+    """For creating companies - matches frontend CreateCompanyDto"""
+    
     class Meta:
         model = Company
         fields = ['name', 'logo_url', 'description']
@@ -760,14 +1029,15 @@ class CompanyCreateSerializer(serializers.ModelSerializer):
         return super().create(validated_data)
 ```
 
-### 4. Buses Serializers (apps/buses/serializers.py)
+### 5. Buses Serializers (apps/buses/serializers.py)
 
 ```python
 from rest_framework import serializers
-from .models import Bus, BusType
+from .models import Bus
 
 
 class BusSerializer(serializers.ModelSerializer):
+    """Matches frontend ApiBus interface"""
     company_id = serializers.UUIDField(source='company.id', read_only=True)
 
     class Meta:
@@ -779,12 +1049,20 @@ class BusSerializer(serializers.ModelSerializer):
 
 
 class BusCreateSerializer(serializers.ModelSerializer):
+    """For creating buses - matches frontend CreateBusDto"""
+    company_id = serializers.UUIDField(write_only=True)
+    
     class Meta:
         model = Bus
-        fields = ['plate_number', 'bus_type', 'total_seats', 'amenities']
+        fields = ['company_id', 'plate_number', 'bus_type', 'total_seats', 'amenities']
+    
+    def create(self, validated_data):
+        company_id = validated_data.pop('company_id')
+        validated_data['company_id'] = company_id
+        return super().create(validated_data)
 ```
 
-### 5. Routes Serializers (apps/routes/serializers.py)
+### 6. Routes Serializers (apps/routes/serializers.py)
 
 ```python
 from rest_framework import serializers
@@ -793,10 +1071,11 @@ from apps.cities.serializers import CitySerializer
 
 
 class RouteSerializer(serializers.ModelSerializer):
+    """Matches frontend ApiRoute interface"""
     origin_city = CitySerializer(read_only=True)
     destination_city = CitySerializer(read_only=True)
-    origin_city_id = serializers.UUIDField(write_only=True)
-    destination_city_id = serializers.UUIDField(write_only=True)
+    origin_city_id = serializers.UUIDField(source='origin_city.id', read_only=True)
+    destination_city_id = serializers.UUIDField(source='destination_city.id', read_only=True)
     company_id = serializers.UUIDField(source='company.id', read_only=True)
 
     class Meta:
@@ -806,9 +1085,20 @@ class RouteSerializer(serializers.ModelSerializer):
             'origin_city_id', 'destination_city_id',
             'base_price', 'duration_hours', 'is_active', 'created_at', 'updated_at'
         ]
+
+
+class RouteCreateSerializer(serializers.ModelSerializer):
+    """For creating routes - matches frontend CreateRouteDto"""
+    company_id = serializers.UUIDField(write_only=True)
+    origin_city_id = serializers.UUIDField(write_only=True)
+    destination_city_id = serializers.UUIDField(write_only=True)
+    
+    class Meta:
+        model = Route
+        fields = ['company_id', 'origin_city_id', 'destination_city_id', 'base_price', 'duration_hours']
 ```
 
-### 6. Trips Serializers (apps/trips/serializers.py)
+### 7. Trips Serializers (apps/trips/serializers.py)
 
 ```python
 from rest_framework import serializers
@@ -819,11 +1109,12 @@ from apps.companies.serializers import CompanySerializer
 
 
 class TripSerializer(serializers.ModelSerializer):
+    """Matches frontend ApiTrip interface"""
     route = RouteSerializer(read_only=True)
     bus = BusSerializer(read_only=True)
     company = serializers.SerializerMethodField()
-    route_id = serializers.UUIDField(write_only=True)
-    bus_id = serializers.UUIDField(write_only=True)
+    route_id = serializers.UUIDField(source='route.id', read_only=True)
+    bus_id = serializers.UUIDField(source='bus.id', read_only=True)
 
     class Meta:
         model = Trip
@@ -837,6 +1128,23 @@ class TripSerializer(serializers.ModelSerializer):
         if obj.route and obj.route.company:
             return CompanySerializer(obj.route.company).data
         return None
+
+
+class TripCreateSerializer(serializers.ModelSerializer):
+    """For creating trips - matches frontend CreateTripDto"""
+    route_id = serializers.UUIDField(write_only=True)
+    bus_id = serializers.UUIDField(write_only=True)
+    
+    class Meta:
+        model = Trip
+        fields = ['route_id', 'bus_id', 'departure_time', 'arrival_time', 'price', 'available_seats']
+    
+    def create(self, validated_data):
+        route_id = validated_data.pop('route_id')
+        bus_id = validated_data.pop('bus_id')
+        validated_data['route_id'] = route_id
+        validated_data['bus_id'] = bus_id
+        return super().create(validated_data)
 
 
 class TripSearchSerializer(serializers.ModelSerializer):
@@ -857,15 +1165,18 @@ class TripSearchSerializer(serializers.ModelSerializer):
         ]
 ```
 
-### 7. Bookings Serializers (apps/bookings/serializers.py)
+### 8. Bookings Serializers (apps/bookings/serializers.py)
 
 ```python
 from rest_framework import serializers
+from django.utils import timezone
+from datetime import timedelta
 from .models import Booking, BookingPassenger
 from apps.trips.serializers import TripSerializer
 
 
 class BookingPassengerSerializer(serializers.ModelSerializer):
+    """Matches frontend ApiPassenger interface"""
     booking_id = serializers.UUIDField(source='booking.id', read_only=True)
 
     class Meta:
@@ -873,11 +1184,21 @@ class BookingPassengerSerializer(serializers.ModelSerializer):
         fields = ['id', 'booking_id', 'full_name', 'phone', 'email', 'nin', 'seat_number', 'created_at']
 
 
+class BookingPassengerCreateSerializer(serializers.Serializer):
+    """For creating passengers in booking - matches frontend CreateBookingDto.passengers"""
+    full_name = serializers.CharField(max_length=255)
+    phone = serializers.CharField(max_length=20)
+    email = serializers.EmailField(required=False, allow_null=True)
+    nin = serializers.CharField(max_length=20, required=False, allow_null=True)
+    seat_number = serializers.CharField(max_length=5)
+
+
 class BookingSerializer(serializers.ModelSerializer):
+    """Matches frontend ApiBooking interface"""
     trip = TripSerializer(read_only=True)
     passengers = BookingPassengerSerializer(many=True, read_only=True)
     user_id = serializers.UUIDField(source='user.id', read_only=True)
-    trip_id = serializers.UUIDField(write_only=True)
+    trip_id = serializers.UUIDField(source='trip.id', read_only=True)
 
     class Meta:
         model = Booking
@@ -887,41 +1208,44 @@ class BookingSerializer(serializers.ModelSerializer):
             'hold_expires_at', 'payment_completed_at', 'cancelled_at',
             'cancellation_reason', 'passengers', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['ticket_code', 'status', 'hold_expires_at']
 
 
-class BookingCreateSerializer(serializers.ModelSerializer):
-    passengers = BookingPassengerSerializer(many=True, required=False)
-
-    class Meta:
-        model = Booking
-        fields = [
-            'trip', 'seats', 'passenger_name', 'passenger_phone',
-            'passenger_email', 'passengers'
-        ]
+class BookingCreateSerializer(serializers.Serializer):
+    """For creating bookings - matches frontend CreateBookingDto"""
+    trip_id = serializers.UUIDField()
+    seats = serializers.ListField(child=serializers.CharField())
+    total_amount = serializers.DecimalField(max_digits=10, decimal_places=2)
+    passenger_name = serializers.CharField(max_length=255)
+    passenger_email = serializers.EmailField()
+    passenger_phone = serializers.CharField(max_length=20)
+    passengers = BookingPassengerCreateSerializer(many=True, required=False)
 
     def create(self, validated_data):
+        from apps.trips.models import Trip
+        
         passengers_data = validated_data.pop('passengers', [])
-        trip = validated_data['trip']
-        seats = validated_data['seats']
+        trip = Trip.objects.get(id=validated_data['trip_id'])
         
-        # Calculate total amount
-        validated_data['total_amount'] = trip.price * len(seats)
-        validated_data['user'] = self.context['request'].user
+        # Set hold expiration (15 minutes)
+        hold_expires_at = timezone.now() + timedelta(minutes=15)
         
-        # Set hold expiration (15 minutes from now)
-        from django.utils import timezone
-        from datetime import timedelta
-        validated_data['hold_expires_at'] = timezone.now() + timedelta(minutes=15)
-        
-        booking = Booking.objects.create(**validated_data)
+        booking = Booking.objects.create(
+            trip=trip,
+            user=self.context['request'].user,
+            seats=validated_data['seats'],
+            total_amount=validated_data['total_amount'],
+            passenger_name=validated_data['passenger_name'],
+            passenger_email=validated_data['passenger_email'],
+            passenger_phone=validated_data['passenger_phone'],
+            hold_expires_at=hold_expires_at
+        )
         
         # Create passengers
         for passenger_data in passengers_data:
             BookingPassenger.objects.create(booking=booking, **passenger_data)
         
         # Update available seats
-        trip.available_seats -= len(seats)
+        trip.available_seats -= len(validated_data['seats'])
         trip.save()
         
         return booking
@@ -929,7 +1253,1252 @@ class BookingCreateSerializer(serializers.ModelSerializer):
 
 ---
 
-## Pagination (utils/pagination.py)
+## Views
+
+### 1. Accounts Views (apps/accounts/views.py)
+
+```python
+from rest_framework import status
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.response import Response
+from rest_framework_simplejwt.tokens import RefreshToken
+
+from .models import User, UserRole, AppRole
+from .serializers import RegisterSerializer, LoginSerializer, UserSerializer, UserRoleSerializer
+from utils.permissions import IsAdmin
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def register(request):
+    """
+    POST /api/v1/auth/register/
+    Register a new user - matches frontend signUp interface
+    """
+    serializer = RegisterSerializer(data=request.data)
+    if serializer.is_valid():
+        user = serializer.save()
+        refresh = RefreshToken.for_user(user)
+        return Response({
+            'access': str(refresh.access_token),
+            'refresh': str(refresh),
+            'user': UserSerializer(user).data
+        }, status=status.HTTP_201_CREATED)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def login(request):
+    """
+    POST /api/v1/auth/login/
+    Login user and return JWT tokens - matches frontend signIn interface
+    """
+    serializer = LoginSerializer(data=request.data)
+    if serializer.is_valid():
+        user = serializer.validated_data['user']
+        refresh = RefreshToken.for_user(user)
+        return Response({
+            'access': str(refresh.access_token),
+            'refresh': str(refresh),
+            'user': UserSerializer(user).data
+        })
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def logout(request):
+    """
+    POST /api/v1/auth/logout/
+    Logout user by blacklisting refresh token
+    """
+    try:
+        refresh_token = request.data.get('refresh')
+        if refresh_token:
+            token = RefreshToken(refresh_token)
+            token.blacklist()
+        return Response({'message': 'Logged out successfully'})
+    except Exception:
+        return Response({'message': 'Logged out'})
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def me(request):
+    """
+    GET /api/v1/auth/me/
+    Get current authenticated user - matches frontend getSession interface
+    """
+    return Response(UserSerializer(request.user).data)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def password_reset(request):
+    """
+    POST /api/v1/auth/password-reset/
+    Request password reset email - matches frontend resetPasswordForEmail
+    """
+    email = request.data.get('email')
+    if not email:
+        return Response({'error': 'Email required'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Always return success (security best practice)
+    return Response({'message': 'Password reset email sent'})
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def password_change(request):
+    """
+    POST /api/v1/auth/password-change/
+    Change user password - matches frontend updatePassword
+    """
+    new_password = request.data.get('new_password')
+    old_password = request.data.get('old_password')
+    
+    if not new_password:
+        return Response({'error': 'new_password required'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    if old_password and not request.user.check_password(old_password):
+        return Response({'error': 'Invalid old password'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    request.user.set_password(new_password)
+    request.user.save()
+    return Response({'message': 'Password changed successfully'})
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def resend_verification(request):
+    """
+    POST /api/v1/auth/resend-verification/
+    Resend verification email - matches frontend resendVerificationEmail
+    """
+    email = request.data.get('email')
+    if not email:
+        return Response({'error': 'Email required'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    # TODO: Implement email sending
+    return Response({'message': 'Verification email sent'})
+
+
+# User Roles endpoints
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def list_user_roles(request):
+    """
+    GET /api/v1/auth/user-roles/?user_id=xxx
+    List roles for a user - matches frontend getByUserId
+    """
+    user_id = request.query_params.get('user_id')
+    if not user_id:
+        return Response({'error': 'user_id required'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    roles = UserRole.objects.filter(user_id=user_id)
+    return Response(UserRoleSerializer(roles, many=True).data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def check_user_role(request):
+    """
+    GET /api/v1/auth/user-roles/check/?user_id=xxx&role=xxx
+    Check if user has specific role - matches frontend hasRole
+    """
+    user_id = request.query_params.get('user_id')
+    role = request.query_params.get('role')
+    
+    if not user_id or not role:
+        return Response({'error': 'user_id and role required'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    has_role = UserRole.objects.filter(user_id=user_id, role=role).exists()
+    return Response({'has_role': has_role})
+
+
+@api_view(['POST'])
+@permission_classes([IsAdmin])
+def add_user_role(request):
+    """
+    POST /api/v1/auth/user-roles/
+    Add role to user - matches frontend addRole
+    """
+    user_id = request.data.get('user_id')
+    role = request.data.get('role')
+    
+    if not user_id or not role:
+        return Response({'error': 'user_id and role required'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    if role not in [r[0] for r in AppRole.choices]:
+        return Response({'error': 'Invalid role'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    user_role, created = UserRole.objects.get_or_create(user_id=user_id, role=role)
+    return Response(UserRoleSerializer(user_role).data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([IsAdmin])
+def remove_user_role(request):
+    """
+    POST /api/v1/auth/user-roles/remove/
+    Remove role from user - matches frontend removeRole
+    """
+    user_id = request.data.get('user_id')
+    role = request.data.get('role')
+    
+    if not user_id or not role:
+        return Response({'error': 'user_id and role required'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        user_role = UserRole.objects.get(user_id=user_id, role=role)
+        user_role.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+    except UserRole.DoesNotExist:
+        return Response({'error': 'Role not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['GET'])
+@permission_classes([IsAdmin])
+def list_users(request):
+    """
+    GET /api/v1/auth/users/
+    List all users (Admin only) - matches frontend profiles.getAll
+    """
+    users = User.objects.all()
+    return Response(UserSerializer(users, many=True).data)
+```
+
+### 2. Profiles Views (apps/profiles/views.py)
+
+```python
+from rest_framework import status
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+
+from .models import Profile
+from .serializers import ProfileSerializer
+from utils.permissions import IsAdmin
+from utils.pagination import StandardResultsPagination
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_profile(request, profile_id):
+    """
+    GET /api/v1/profiles/<id>/
+    Get profile by ID - matches frontend profiles.getById
+    """
+    try:
+        profile = Profile.objects.get(id=profile_id)
+        return Response(ProfileSerializer(profile).data)
+    except Profile.DoesNotExist:
+        return Response({'error': 'Profile not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def my_profile(request):
+    """
+    GET /api/v1/profiles/me/
+    Get current user's profile
+    """
+    try:
+        profile = Profile.objects.get(user=request.user)
+        return Response(ProfileSerializer(profile).data)
+    except Profile.DoesNotExist:
+        profile = Profile.objects.create(user=request.user)
+        return Response(ProfileSerializer(profile).data)
+
+
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def update_profile(request, profile_id):
+    """
+    PATCH /api/v1/profiles/<id>/
+    Update profile - matches frontend profiles.update
+    """
+    try:
+        profile = Profile.objects.get(id=profile_id)
+        
+        # Check permission
+        if profile.user != request.user:
+            return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+        
+        serializer = ProfileSerializer(profile, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    except Profile.DoesNotExist:
+        return Response({'error': 'Profile not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['GET'])
+@permission_classes([IsAdmin])
+def list_profiles(request):
+    """
+    GET /api/v1/profiles/
+    List all profiles (Admin only) - matches frontend profiles.getAll
+    """
+    profiles = Profile.objects.all()
+    paginator = StandardResultsPagination()
+    result_page = paginator.paginate_queryset(profiles, request)
+    serializer = ProfileSerializer(result_page, many=True)
+    return paginator.get_paginated_response(serializer.data)
+```
+
+### 3. Cities Views (apps/cities/views.py)
+
+```python
+from rest_framework import status
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
+from rest_framework.response import Response
+
+from .models import City
+from .serializers import CitySerializer
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def list_cities(request):
+    """
+    GET /api/v1/cities/
+    List all cities - matches frontend cities.getAll
+    Returns simple array (not paginated) as per interface
+    """
+    cities = City.objects.all()
+    serializer = CitySerializer(cities, many=True)
+    return Response(serializer.data)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def get_city(request, city_id):
+    """
+    GET /api/v1/cities/<id>/
+    Get city by ID - matches frontend cities.getById
+    """
+    try:
+        city = City.objects.get(id=city_id)
+        return Response(CitySerializer(city).data)
+    except City.DoesNotExist:
+        return Response({'error': 'City not found'}, status=status.HTTP_404_NOT_FOUND)
+```
+
+### 4. Companies Views (apps/companies/views.py)
+
+```python
+from rest_framework import status
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.response import Response
+
+from .models import Company
+from .serializers import CompanySerializer, CompanyCreateSerializer
+from apps.accounts.models import AppRole, UserRole
+from utils.permissions import IsAdmin
+from utils.pagination import StandardResultsPagination
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def list_companies(request):
+    """
+    GET /api/v1/companies/
+    List companies - matches frontend companies.getAll
+    Supports ?owner_id filter for getByOwnerId
+    """
+    owner_id = request.query_params.get('owner_id')
+    
+    if owner_id:
+        companies = Company.objects.filter(owner_id=owner_id)
+    else:
+        companies = Company.objects.filter(is_verified=True)
+    
+    paginator = StandardResultsPagination()
+    result_page = paginator.paginate_queryset(companies, request)
+    serializer = CompanySerializer(result_page, many=True)
+    return paginator.get_paginated_response(serializer.data)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def get_company(request, company_id):
+    """
+    GET /api/v1/companies/<id>/
+    Get company by ID - matches frontend companies.getById
+    """
+    try:
+        company = Company.objects.get(id=company_id)
+        return Response(CompanySerializer(company).data)
+    except Company.DoesNotExist:
+        return Response({'error': 'Company not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def create_company(request):
+    """
+    POST /api/v1/companies/
+    Create company - matches frontend companies.create
+    """
+    serializer = CompanyCreateSerializer(data=request.data, context={'request': request})
+    if serializer.is_valid():
+        company = serializer.save()
+        # Assign company_admin role
+        UserRole.objects.get_or_create(user=request.user, role=AppRole.COMPANY_ADMIN)
+        return Response(CompanySerializer(company).data, status=status.HTTP_201_CREATED)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def update_company(request, company_id):
+    """
+    PATCH /api/v1/companies/<id>/
+    Update company - matches frontend companies.update
+    """
+    try:
+        company = Company.objects.get(id=company_id)
+    except Company.DoesNotExist:
+        return Response({'error': 'Company not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    # Check permission
+    if company.owner != request.user and not request.user.roles.filter(role=AppRole.ADMIN).exists():
+        return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+    
+    serializer = CompanySerializer(company, data=request.data, partial=True)
+    if serializer.is_valid():
+        serializer.save()
+        return Response(serializer.data)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+```
+
+### 5. Buses Views (apps/buses/views.py)
+
+```python
+from rest_framework import status
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+
+from .models import Bus
+from .serializers import BusSerializer, BusCreateSerializer
+from apps.accounts.models import AppRole
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def list_buses(request):
+    """
+    GET /api/v1/buses/?company_id=xxx
+    List buses by company - matches frontend buses.getByCompanyId
+    """
+    company_id = request.query_params.get('company_id')
+    if not company_id:
+        return Response({'error': 'company_id required'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    buses = Bus.objects.filter(company_id=company_id)
+    serializer = BusSerializer(buses, many=True)
+    return Response(serializer.data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_bus(request, bus_id):
+    """
+    GET /api/v1/buses/<id>/
+    Get bus by ID - matches frontend buses.getById
+    """
+    try:
+        bus = Bus.objects.get(id=bus_id)
+        return Response(BusSerializer(bus).data)
+    except Bus.DoesNotExist:
+        return Response({'error': 'Bus not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def create_bus(request):
+    """
+    POST /api/v1/buses/
+    Create bus - matches frontend buses.create
+    """
+    serializer = BusCreateSerializer(data=request.data)
+    if serializer.is_valid():
+        bus = serializer.save()
+        return Response(BusSerializer(bus).data, status=status.HTTP_201_CREATED)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def update_bus(request, bus_id):
+    """
+    PATCH /api/v1/buses/<id>/
+    Update bus - matches frontend buses.update
+    """
+    try:
+        bus = Bus.objects.get(id=bus_id)
+    except Bus.DoesNotExist:
+        return Response({'error': 'Bus not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    serializer = BusSerializer(bus, data=request.data, partial=True)
+    if serializer.is_valid():
+        serializer.save()
+        return Response(serializer.data)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def delete_bus(request, bus_id):
+    """
+    DELETE /api/v1/buses/<id>/
+    Delete bus - matches frontend buses.delete
+    """
+    try:
+        bus = Bus.objects.get(id=bus_id)
+        bus.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+    except Bus.DoesNotExist:
+        return Response({'error': 'Bus not found'}, status=status.HTTP_404_NOT_FOUND)
+```
+
+### 6. Routes Views (apps/routes/views.py)
+
+```python
+from rest_framework import status
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.response import Response
+
+from .models import Route
+from .serializers import RouteSerializer, RouteCreateSerializer
+from apps.cities.models import City
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def list_routes(request):
+    """
+    GET /api/v1/routes/?company_id=xxx
+    List routes by company - matches frontend routes.getByCompanyId
+    """
+    company_id = request.query_params.get('company_id')
+    if not company_id:
+        return Response({'error': 'company_id required'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    routes = Route.objects.filter(company_id=company_id).select_related('origin_city', 'destination_city')
+    serializer = RouteSerializer(routes, many=True)
+    return Response(serializer.data)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def get_route(request, route_id):
+    """
+    GET /api/v1/routes/<id>/
+    Get route by ID - matches frontend routes.getById
+    """
+    try:
+        route = Route.objects.select_related('origin_city', 'destination_city').get(id=route_id)
+        return Response(RouteSerializer(route).data)
+    except Route.DoesNotExist:
+        return Response({'error': 'Route not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def create_route(request):
+    """
+    POST /api/v1/routes/
+    Create route - matches frontend routes.create
+    """
+    serializer = RouteCreateSerializer(data=request.data)
+    if serializer.is_valid():
+        # Validate cities exist
+        try:
+            origin = City.objects.get(id=serializer.validated_data['origin_city_id'])
+            destination = City.objects.get(id=serializer.validated_data['destination_city_id'])
+        except City.DoesNotExist:
+            return Response({'error': 'Invalid city ID'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if origin == destination:
+            return Response({'error': 'Origin and destination must be different'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        route = Route.objects.create(
+            company_id=serializer.validated_data['company_id'],
+            origin_city=origin,
+            destination_city=destination,
+            base_price=serializer.validated_data['base_price'],
+            duration_hours=serializer.validated_data['duration_hours']
+        )
+        return Response(RouteSerializer(route).data, status=status.HTTP_201_CREATED)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def update_route(request, route_id):
+    """
+    PATCH /api/v1/routes/<id>/
+    Update route - matches frontend routes.update
+    """
+    try:
+        route = Route.objects.get(id=route_id)
+    except Route.DoesNotExist:
+        return Response({'error': 'Route not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    serializer = RouteSerializer(route, data=request.data, partial=True)
+    if serializer.is_valid():
+        serializer.save()
+        return Response(serializer.data)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def delete_route(request, route_id):
+    """
+    DELETE /api/v1/routes/<id>/
+    Delete route - matches frontend routes.delete
+    """
+    try:
+        route = Route.objects.get(id=route_id)
+        route.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+    except Route.DoesNotExist:
+        return Response({'error': 'Route not found'}, status=status.HTTP_404_NOT_FOUND)
+```
+
+### 7. Trips Views (apps/trips/views.py)
+
+```python
+from rest_framework import status
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.response import Response
+from django.utils import timezone
+
+from .models import Trip, TripStatus
+from .serializers import TripSerializer, TripCreateSerializer, TripSearchSerializer
+from utils.pagination import StandardResultsPagination
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def search_trips(request):
+    """
+    GET /api/v1/trips/search/
+    Search trips - matches frontend trips.search
+    Parameters: origin_city_id, destination_city_id, departure_date, min_seats
+    """
+    trips = Trip.objects.select_related(
+        'route__origin_city',
+        'route__destination_city',
+        'route__company',
+        'bus'
+    ).filter(
+        status=TripStatus.SCHEDULED,
+        departure_time__gt=timezone.now()
+    )
+    
+    # Filters
+    origin_city_id = request.query_params.get('origin_city_id')
+    destination_city_id = request.query_params.get('destination_city_id')
+    departure_date = request.query_params.get('departure_date')
+    min_seats = request.query_params.get('min_seats', 1)
+    
+    if origin_city_id:
+        trips = trips.filter(route__origin_city_id=origin_city_id)
+    if destination_city_id:
+        trips = trips.filter(route__destination_city_id=destination_city_id)
+    if departure_date:
+        trips = trips.filter(departure_time__date=departure_date)
+    if min_seats:
+        trips = trips.filter(available_seats__gte=int(min_seats))
+    
+    trips = trips.order_by('departure_time')
+    serializer = TripSerializer(trips, many=True)
+    return Response(serializer.data)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def get_trip(request, trip_id):
+    """
+    GET /api/v1/trips/<id>/
+    Get trip by ID - matches frontend trips.getById
+    """
+    try:
+        trip = Trip.objects.select_related(
+            'route__origin_city',
+            'route__destination_city',
+            'route__company',
+            'bus'
+        ).get(id=trip_id)
+        return Response(TripSerializer(trip).data)
+    except Trip.DoesNotExist:
+        return Response({'error': 'Trip not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def list_company_trips(request):
+    """
+    GET /api/v1/trips/?company_id=xxx
+    List trips by company - matches frontend trips.getByCompanyId
+    """
+    company_id = request.query_params.get('company_id')
+    if not company_id:
+        return Response({'error': 'company_id required'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    trips = Trip.objects.filter(route__company_id=company_id).select_related(
+        'route__origin_city', 'route__destination_city', 'bus'
+    )
+    serializer = TripSerializer(trips, many=True)
+    return Response(serializer.data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def create_trip(request):
+    """
+    POST /api/v1/trips/
+    Create trip - matches frontend trips.create
+    """
+    serializer = TripCreateSerializer(data=request.data)
+    if serializer.is_valid():
+        trip = serializer.save()
+        return Response(TripSerializer(trip).data, status=status.HTTP_201_CREATED)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def update_trip(request, trip_id):
+    """
+    PATCH /api/v1/trips/<id>/
+    Update trip - matches frontend trips.update
+    """
+    try:
+        trip = Trip.objects.get(id=trip_id)
+    except Trip.DoesNotExist:
+        return Response({'error': 'Trip not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    serializer = TripSerializer(trip, data=request.data, partial=True)
+    if serializer.is_valid():
+        serializer.save()
+        return Response(serializer.data)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def delete_trip(request, trip_id):
+    """
+    DELETE /api/v1/trips/<id>/
+    Delete trip - matches frontend trips.delete
+    """
+    try:
+        trip = Trip.objects.get(id=trip_id)
+        trip.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+    except Trip.DoesNotExist:
+        return Response({'error': 'Trip not found'}, status=status.HTTP_404_NOT_FOUND)
+```
+
+### 8. Bookings Views (apps/bookings/views.py)
+
+```python
+from rest_framework import status
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from django.utils import timezone
+
+from .models import Booking, BookingPassenger, BookingStatus
+from .serializers import BookingSerializer, BookingCreateSerializer, BookingPassengerSerializer
+from apps.accounts.models import AppRole
+from utils.permissions import IsAdmin
+from utils.pagination import StandardResultsPagination
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def list_bookings(request):
+    """
+    GET /api/v1/bookings/
+    List bookings - supports user_id, company_id filters
+    Matches frontend bookings.getByUserId and getByCompanyId
+    """
+    user_id = request.query_params.get('user_id')
+    company_id = request.query_params.get('company_id')
+    
+    if user_id:
+        bookings = Booking.objects.filter(user_id=user_id)
+    elif company_id:
+        bookings = Booking.objects.filter(trip__route__company_id=company_id)
+    else:
+        # Default: current user's bookings
+        bookings = Booking.objects.filter(user=request.user)
+    
+    bookings = bookings.select_related(
+        'trip__route__origin_city',
+        'trip__route__destination_city',
+        'trip__route__company',
+        'trip__bus'
+    ).prefetch_related('passengers').order_by('-created_at')
+    
+    paginator = StandardResultsPagination()
+    result_page = paginator.paginate_queryset(bookings, request)
+    serializer = BookingSerializer(result_page, many=True)
+    return paginator.get_paginated_response(serializer.data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_booking(request, booking_id):
+    """
+    GET /api/v1/bookings/<id>/
+    Get booking by ID - matches frontend bookings.getById
+    """
+    try:
+        booking = Booking.objects.select_related(
+            'trip__route__origin_city',
+            'trip__route__destination_city',
+            'trip__route__company',
+            'trip__bus'
+        ).prefetch_related('passengers').get(id=booking_id)
+        
+        # Check permission
+        if booking.user != request.user and not request.user.roles.filter(role=AppRole.ADMIN).exists():
+            if booking.trip.route.company.owner != request.user:
+                return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+        
+        return Response(BookingSerializer(booking).data)
+    except Booking.DoesNotExist:
+        return Response({'error': 'Booking not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def create_booking(request):
+    """
+    POST /api/v1/bookings/
+    Create booking - matches frontend bookings.create
+    """
+    serializer = BookingCreateSerializer(data=request.data, context={'request': request})
+    if serializer.is_valid():
+        booking = serializer.save()
+        return Response(BookingSerializer(booking).data, status=status.HTTP_201_CREATED)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def update_booking(request, booking_id):
+    """
+    PATCH /api/v1/bookings/<id>/
+    Update booking - matches frontend bookings.update
+    """
+    try:
+        booking = Booking.objects.get(id=booking_id)
+    except Booking.DoesNotExist:
+        return Response({'error': 'Booking not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    # Handle cancellation
+    if request.data.get('status') == 'cancelled':
+        booking.status = BookingStatus.CANCELLED
+        booking.cancelled_at = timezone.now()
+        booking.cancellation_reason = request.data.get('cancellation_reason', '')
+        booking.save()
+        
+        # Restore available seats
+        booking.trip.available_seats += len(booking.seats)
+        booking.trip.save()
+    else:
+        serializer = BookingSerializer(booking, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+        else:
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    return Response(BookingSerializer(booking).data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_booking_passengers(request, booking_id):
+    """
+    GET /api/v1/bookings/<id>/passengers/
+    Get passengers for a booking - matches frontend bookings.getPassengers
+    """
+    try:
+        booking = Booking.objects.get(id=booking_id)
+    except Booking.DoesNotExist:
+        return Response({'error': 'Booking not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    passengers = BookingPassenger.objects.filter(booking=booking)
+    serializer = BookingPassengerSerializer(passengers, many=True)
+    return Response(serializer.data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAdmin])
+def list_all_bookings(request):
+    """
+    GET /api/v1/bookings/all/
+    List all bookings (Admin only) - matches frontend bookings.getAll
+    """
+    bookings = Booking.objects.all().select_related(
+        'trip__route__origin_city',
+        'trip__route__destination_city',
+        'trip__route__company',
+        'trip__bus',
+        'user'
+    ).prefetch_related('passengers')
+    
+    paginator = StandardResultsPagination()
+    result_page = paginator.paginate_queryset(bookings, request)
+    serializer = BookingSerializer(result_page, many=True)
+    return paginator.get_paginated_response(serializer.data)
+```
+
+### 9. Functions Views (apps/accounts/views.py - add)
+
+```python
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def invoke_function(request, function_name):
+    """
+    POST /api/v1/functions/<function_name>/
+    Invoke backend function - matches frontend functions.invoke
+    """
+    # Map function names to handlers
+    handlers = {
+        'send-booking-email': handle_send_booking_email,
+        # Add more function handlers as needed
+    }
+    
+    handler = handlers.get(function_name)
+    if not handler:
+        return Response({'error': f'Function {function_name} not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    try:
+        result = handler(request.data)
+        return Response(result)
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+def handle_send_booking_email(data):
+    """Handle send-booking-email function"""
+    # TODO: Implement email sending
+    return {'success': True, 'message': 'Email sent'}
+```
+
+---
+
+## URL Configuration
+
+### Main URLs (bus_booking/urls.py)
+
+```python
+from django.contrib import admin
+from django.urls import path, include
+from rest_framework import permissions
+from drf_yasg.views import get_schema_view
+from drf_yasg import openapi
+
+schema_view = get_schema_view(
+    openapi.Info(
+        title="Bus Booking API",
+        default_version='v1',
+        description="API for bus booking system - matches React frontend interfaces",
+    ),
+    public=True,
+    permission_classes=[permissions.AllowAny],
+)
+
+urlpatterns = [
+    path('admin/', admin.site.urls),
+    path('api/v1/auth/', include('apps.accounts.urls')),
+    path('api/v1/profiles/', include('apps.profiles.urls')),
+    path('api/v1/cities/', include('apps.cities.urls')),
+    path('api/v1/companies/', include('apps.companies.urls')),
+    path('api/v1/buses/', include('apps.buses.urls')),
+    path('api/v1/routes/', include('apps.routes.urls')),
+    path('api/v1/trips/', include('apps.trips.urls')),
+    path('api/v1/bookings/', include('apps.bookings.urls')),
+    path('api/v1/functions/', include('apps.functions.urls')),
+    
+    # API Documentation
+    path('swagger/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
+    path('redoc/', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc'),
+]
+```
+
+### Accounts URLs (apps/accounts/urls.py)
+
+```python
+from django.urls import path
+from rest_framework_simplejwt.views import TokenRefreshView
+from . import views
+
+urlpatterns = [
+    # Auth endpoints - match IAuthService interface
+    path('register/', views.register, name='register'),
+    path('login/', views.login, name='login'),
+    path('logout/', views.logout, name='logout'),
+    path('refresh/', TokenRefreshView.as_view(), name='token-refresh'),
+    path('me/', views.me, name='me'),
+    path('password-reset/', views.password_reset, name='password-reset'),
+    path('password-change/', views.password_change, name='password-change'),
+    path('resend-verification/', views.resend_verification, name='resend-verification'),
+    
+    # User roles - match IUserRolesService interface
+    path('user-roles/', views.list_user_roles, name='list-user-roles'),
+    path('user-roles/check/', views.check_user_role, name='check-user-role'),
+    path('user-roles/add/', views.add_user_role, name='add-user-role'),
+    path('user-roles/remove/', views.remove_user_role, name='remove-user-role'),
+    
+    # Admin endpoints
+    path('users/', views.list_users, name='list-users'),
+]
+```
+
+### Profiles URLs (apps/profiles/urls.py)
+
+```python
+from django.urls import path
+from . import views
+
+urlpatterns = [
+    # Match IProfilesService interface
+    path('', views.list_profiles, name='list-profiles'),
+    path('me/', views.my_profile, name='my-profile'),
+    path('<uuid:profile_id>/', views.get_profile, name='get-profile'),
+    path('<uuid:profile_id>/update/', views.update_profile, name='update-profile'),
+]
+```
+
+### Cities URLs (apps/cities/urls.py)
+
+```python
+from django.urls import path
+from . import views
+
+urlpatterns = [
+    # Match ICitiesService interface
+    path('', views.list_cities, name='list-cities'),
+    path('<uuid:city_id>/', views.get_city, name='get-city'),
+]
+```
+
+### Companies URLs (apps/companies/urls.py)
+
+```python
+from django.urls import path
+from . import views
+
+urlpatterns = [
+    # Match ICompaniesService interface
+    path('', views.list_companies, name='list-companies'),
+    path('create/', views.create_company, name='create-company'),
+    path('<uuid:company_id>/', views.get_company, name='get-company'),
+    path('<uuid:company_id>/update/', views.update_company, name='update-company'),
+]
+```
+
+### Buses URLs (apps/buses/urls.py)
+
+```python
+from django.urls import path
+from . import views
+
+urlpatterns = [
+    # Match IBusesService interface
+    path('', views.list_buses, name='list-buses'),
+    path('create/', views.create_bus, name='create-bus'),
+    path('<uuid:bus_id>/', views.get_bus, name='get-bus'),
+    path('<uuid:bus_id>/update/', views.update_bus, name='update-bus'),
+    path('<uuid:bus_id>/delete/', views.delete_bus, name='delete-bus'),
+]
+```
+
+### Routes URLs (apps/routes/urls.py)
+
+```python
+from django.urls import path
+from . import views
+
+urlpatterns = [
+    # Match IRoutesService interface
+    path('', views.list_routes, name='list-routes'),
+    path('create/', views.create_route, name='create-route'),
+    path('<uuid:route_id>/', views.get_route, name='get-route'),
+    path('<uuid:route_id>/update/', views.update_route, name='update-route'),
+    path('<uuid:route_id>/delete/', views.delete_route, name='delete-route'),
+]
+```
+
+### Trips URLs (apps/trips/urls.py)
+
+```python
+from django.urls import path
+from . import views
+
+urlpatterns = [
+    # Match ITripsService interface
+    path('', views.list_company_trips, name='list-trips'),
+    path('search/', views.search_trips, name='search-trips'),
+    path('create/', views.create_trip, name='create-trip'),
+    path('<uuid:trip_id>/', views.get_trip, name='get-trip'),
+    path('<uuid:trip_id>/update/', views.update_trip, name='update-trip'),
+    path('<uuid:trip_id>/delete/', views.delete_trip, name='delete-trip'),
+]
+```
+
+### Bookings URLs (apps/bookings/urls.py)
+
+```python
+from django.urls import path
+from . import views
+
+urlpatterns = [
+    # Match IBookingsService interface
+    path('', views.list_bookings, name='list-bookings'),
+    path('all/', views.list_all_bookings, name='all-bookings'),
+    path('create/', views.create_booking, name='create-booking'),
+    path('<uuid:booking_id>/', views.get_booking, name='get-booking'),
+    path('<uuid:booking_id>/update/', views.update_booking, name='update-booking'),
+    path('<uuid:booking_id>/passengers/', views.get_booking_passengers, name='booking-passengers'),
+]
+```
+
+### Functions URLs (apps/functions/urls.py)
+
+```python
+from django.urls import path
+from apps.accounts import views
+
+urlpatterns = [
+    # Match IFunctionsService interface
+    path('<str:function_name>/', views.invoke_function, name='invoke-function'),
+]
+```
+
+---
+
+## API Endpoints Summary
+
+This table maps frontend interface methods to Django endpoints:
+
+### IAuthService
+
+| Frontend Method | HTTP | Endpoint | Description |
+|-----------------|------|----------|-------------|
+| `getSession()` | GET | `/api/v1/auth/me/` | Get current user |
+| `signUp()` | POST | `/api/v1/auth/register/` | Register new user |
+| `signIn()` | POST | `/api/v1/auth/login/` | Login user |
+| `signOut()` | POST | `/api/v1/auth/logout/` | Logout user |
+| `resetPasswordForEmail()` | POST | `/api/v1/auth/password-reset/` | Request password reset |
+| `updatePassword()` | POST | `/api/v1/auth/password-change/` | Change password |
+| `resendVerificationEmail()` | POST | `/api/v1/auth/resend-verification/` | Resend verification |
+
+### ICitiesService
+
+| Frontend Method | HTTP | Endpoint | Description |
+|-----------------|------|----------|-------------|
+| `getAll()` | GET | `/api/v1/cities/` | List all cities |
+| `getById(id)` | GET | `/api/v1/cities/<id>/` | Get city by ID |
+
+### ICompaniesService
+
+| Frontend Method | HTTP | Endpoint | Description |
+|-----------------|------|----------|-------------|
+| `getAll(options)` | GET | `/api/v1/companies/` | List companies (paginated) |
+| `getById(id)` | GET | `/api/v1/companies/<id>/` | Get company by ID |
+| `getByOwnerId(ownerId)` | GET | `/api/v1/companies/?owner_id=xxx` | Get company by owner |
+| `create(data, ownerId)` | POST | `/api/v1/companies/create/` | Create company |
+| `update(id, data)` | PATCH | `/api/v1/companies/<id>/update/` | Update company |
+
+### IBusesService
+
+| Frontend Method | HTTP | Endpoint | Description |
+|-----------------|------|----------|-------------|
+| `getByCompanyId(companyId)` | GET | `/api/v1/buses/?company_id=xxx` | List buses by company |
+| `getById(id)` | GET | `/api/v1/buses/<id>/` | Get bus by ID |
+| `create(data)` | POST | `/api/v1/buses/create/` | Create bus |
+| `update(id, data)` | PATCH | `/api/v1/buses/<id>/update/` | Update bus |
+| `delete(id)` | DELETE | `/api/v1/buses/<id>/delete/` | Delete bus |
+
+### IRoutesService
+
+| Frontend Method | HTTP | Endpoint | Description |
+|-----------------|------|----------|-------------|
+| `getByCompanyId(companyId)` | GET | `/api/v1/routes/?company_id=xxx` | List routes by company |
+| `getById(id)` | GET | `/api/v1/routes/<id>/` | Get route by ID |
+| `create(data)` | POST | `/api/v1/routes/create/` | Create route |
+| `update(id, data)` | PATCH | `/api/v1/routes/<id>/update/` | Update route |
+| `delete(id)` | DELETE | `/api/v1/routes/<id>/delete/` | Delete route |
+
+### ITripsService
+
+| Frontend Method | HTTP | Endpoint | Description |
+|-----------------|------|----------|-------------|
+| `search(params)` | GET | `/api/v1/trips/search/` | Search trips |
+| `getByCompanyId(companyId)` | GET | `/api/v1/trips/?company_id=xxx` | List trips by company |
+| `getById(id)` | GET | `/api/v1/trips/<id>/` | Get trip by ID |
+| `create(data)` | POST | `/api/v1/trips/create/` | Create trip |
+| `update(id, data)` | PATCH | `/api/v1/trips/<id>/update/` | Update trip |
+| `delete(id)` | DELETE | `/api/v1/trips/<id>/delete/` | Delete trip |
+
+### IBookingsService
+
+| Frontend Method | HTTP | Endpoint | Description |
+|-----------------|------|----------|-------------|
+| `getByUserId(userId)` | GET | `/api/v1/bookings/?user_id=xxx` | List user's bookings |
+| `getByCompanyId(companyId)` | GET | `/api/v1/bookings/?company_id=xxx` | List company's bookings |
+| `getAll(options)` | GET | `/api/v1/bookings/all/` | List all bookings (Admin) |
+| `getById(id)` | GET | `/api/v1/bookings/<id>/` | Get booking by ID |
+| `create(data, userId)` | POST | `/api/v1/bookings/create/` | Create booking |
+| `update(id, data)` | PATCH | `/api/v1/bookings/<id>/update/` | Update booking |
+| `getPassengers(bookingId)` | GET | `/api/v1/bookings/<id>/passengers/` | Get passengers |
+
+### IProfilesService
+
+| Frontend Method | HTTP | Endpoint | Description |
+|-----------------|------|----------|-------------|
+| `getById(id)` | GET | `/api/v1/profiles/<id>/` | Get profile by ID |
+| `update(id, data)` | PATCH | `/api/v1/profiles/<id>/update/` | Update profile |
+| `getAll(options)` | GET | `/api/v1/profiles/` | List all profiles (Admin) |
+
+### IUserRolesService
+
+| Frontend Method | HTTP | Endpoint | Description |
+|-----------------|------|----------|-------------|
+| `getByUserId(userId)` | GET | `/api/v1/auth/user-roles/?user_id=xxx` | List user roles |
+| `hasRole(userId, role)` | GET | `/api/v1/auth/user-roles/check/?user_id=xxx&role=xxx` | Check role |
+| `addRole(userId, role)` | POST | `/api/v1/auth/user-roles/add/` | Add role |
+| `removeRole(userId, role)` | POST | `/api/v1/auth/user-roles/remove/` | Remove role |
+
+### IFunctionsService
+
+| Frontend Method | HTTP | Endpoint | Description |
+|-----------------|------|----------|-------------|
+| `invoke(functionName, body)` | POST | `/api/v1/functions/<functionName>/` | Invoke function |
+
+---
+
+## Pagination Helper (utils/pagination.py)
 
 ```python
 from rest_framework.pagination import PageNumberPagination
@@ -937,6 +2506,10 @@ from rest_framework.response import Response
 
 
 class StandardResultsPagination(PageNumberPagination):
+    """
+    Standard pagination matching frontend ApiListResult interface.
+    Frontend expects: { data, total, page, limit }
+    """
     page_size = 10
     page_size_query_param = 'page_size'
     max_page_size = 100
@@ -951,29 +2524,11 @@ class StandardResultsPagination(PageNumberPagination):
             'previous': self.get_previous_link(),
             'results': data
         })
-
-
-class SeatsPagination(PageNumberPagination):
-    page_size = 50
-    page_size_query_param = 'page_size'
-    max_page_size = 100
-
-
-class BookingsPagination(PageNumberPagination):
-    page_size = 20
-    page_size_query_param = 'page_size'
-    max_page_size = 50
-
-
-class TripsPagination(PageNumberPagination):
-    page_size = 10
-    page_size_query_param = 'page_size'
-    max_page_size = 50
 ```
 
 ---
 
-## Permissions (utils/permissions.py)
+## Permissions Helper (utils/permissions.py)
 
 ```python
 from rest_framework.permissions import BasePermission
@@ -1005,7 +2560,6 @@ class IsOwnerOrAdmin(BasePermission):
         if request.user.roles.filter(role=AppRole.ADMIN).exists():
             return True
         
-        # Check ownership based on object type
         if hasattr(obj, 'owner'):
             return obj.owner == request.user
         if hasattr(obj, 'user'):
@@ -1014,1567 +2568,11 @@ class IsOwnerOrAdmin(BasePermission):
             return obj.company.owner == request.user
         
         return False
-
-
-class IsPassenger(BasePermission):
-    """Permission for passengers"""
-    
-    def has_permission(self, request, view):
-        if not request.user.is_authenticated:
-            return False
-        return request.user.roles.filter(role=AppRole.PASSENGER).exists()
 ```
 
 ---
 
-## Views
-
-### 1. Accounts Views (apps/accounts/views.py)
-
-```python
-from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny, IsAuthenticated
-from rest_framework.response import Response
-from rest_framework_simplejwt.tokens import RefreshToken
-
-from .models import User, UserRole, Profile, AppRole
-from .serializers import (
-    RegisterSerializer, LoginSerializer, UserSerializer,
-    UserRoleSerializer, ProfileSerializer
-)
-from utils.permissions import IsAdmin
-
-
-@api_view(['POST'])
-@permission_classes([AllowAny])
-def register(request):
-    """Register a new user"""
-    serializer = RegisterSerializer(data=request.data)
-    if serializer.is_valid():
-        user = serializer.save()
-        refresh = RefreshToken.for_user(user)
-        return Response({
-            'access': str(refresh.access_token),
-            'refresh': str(refresh),
-            'user': UserSerializer(user).data
-        }, status=status.HTTP_201_CREATED)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-@api_view(['POST'])
-@permission_classes([AllowAny])
-def login(request):
-    """Login user and return JWT tokens"""
-    serializer = LoginSerializer(data=request.data)
-    if serializer.is_valid():
-        user = serializer.validated_data['user']
-        refresh = RefreshToken.for_user(user)
-        return Response({
-            'access': str(refresh.access_token),
-            'refresh': str(refresh),
-            'user': UserSerializer(user).data
-        })
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def logout(request):
-    """Logout user by blacklisting refresh token"""
-    try:
-        refresh_token = request.data.get('refresh')
-        if refresh_token:
-            token = RefreshToken(refresh_token)
-            token.blacklist()
-        return Response({'message': 'Logged out successfully'})
-    except Exception:
-        return Response({'message': 'Logged out'})
-
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def me(request):
-    """Get current authenticated user"""
-    return Response(UserSerializer(request.user).data)
-
-
-@api_view(['GET', 'PUT', 'PATCH'])
-@permission_classes([IsAuthenticated])
-def profile(request):
-    """Get or update user profile"""
-    try:
-        user_profile = Profile.objects.get(user=request.user)
-    except Profile.DoesNotExist:
-        user_profile = Profile.objects.create(user=request.user)
-
-    if request.method == 'GET':
-        return Response(ProfileSerializer(user_profile).data)
-
-    serializer = ProfileSerializer(user_profile, data=request.data, partial=True)
-    if serializer.is_valid():
-        serializer.save()
-        return Response(serializer.data)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def list_user_roles(request):
-    """List roles for a user"""
-    user_id = request.query_params.get('user_id')
-    if not user_id:
-        return Response({'error': 'user_id required'}, status=status.HTTP_400_BAD_REQUEST)
-    
-    roles = UserRole.objects.filter(user_id=user_id)
-    return Response(UserRoleSerializer(roles, many=True).data)
-
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def check_user_role(request):
-    """Check if user has specific role"""
-    user_id = request.query_params.get('user_id')
-    role = request.query_params.get('role')
-    
-    if not user_id or not role:
-        return Response({'error': 'user_id and role required'}, status=status.HTTP_400_BAD_REQUEST)
-    
-    has_role = UserRole.objects.filter(user_id=user_id, role=role).exists()
-    return Response({'has_role': has_role})
-
-
-@api_view(['GET'])
-@permission_classes([IsAdmin])
-def list_users(request):
-    """List all users (Admin only)"""
-    users = User.objects.all()
-    return Response(UserSerializer(users, many=True).data)
-
-
-@api_view(['POST'])
-@permission_classes([IsAdmin])
-def assign_role(request):
-    """Assign role to user (Admin only)"""
-    user_id = request.data.get('user_id')
-    role = request.data.get('role')
-    
-    if not user_id or not role:
-        return Response({'error': 'user_id and role required'}, status=status.HTTP_400_BAD_REQUEST)
-    
-    if role not in [r[0] for r in AppRole.choices]:
-        return Response({'error': 'Invalid role'}, status=status.HTTP_400_BAD_REQUEST)
-    
-    try:
-        user = User.objects.get(id=user_id)
-    except User.DoesNotExist:
-        return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
-    
-    user_role, created = UserRole.objects.get_or_create(user=user, role=role)
-    return Response(UserRoleSerializer(user_role).data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
-
-
-@api_view(['DELETE'])
-@permission_classes([IsAdmin])
-def remove_role(request, user_id, role):
-    """Remove role from user (Admin only)"""
-    try:
-        user_role = UserRole.objects.get(user_id=user_id, role=role)
-        user_role.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
-    except UserRole.DoesNotExist:
-        return Response({'error': 'Role not found'}, status=status.HTTP_404_NOT_FOUND)
-
-
-@api_view(['POST'])
-@permission_classes([AllowAny])
-def password_reset(request):
-    """Request password reset email"""
-    email = request.data.get('email')
-    if not email:
-        return Response({'error': 'Email required'}, status=status.HTTP_400_BAD_REQUEST)
-    
-    try:
-        user = User.objects.get(email=email)
-        # TODO: Send password reset email
-        return Response({'message': 'Password reset email sent'})
-    except User.DoesNotExist:
-        # Return success even if user doesn't exist (security)
-        return Response({'message': 'Password reset email sent'})
-
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def password_change(request):
-    """Change user password"""
-    old_password = request.data.get('old_password')
-    new_password = request.data.get('new_password')
-    
-    if not old_password or not new_password:
-        return Response({'error': 'old_password and new_password required'}, status=status.HTTP_400_BAD_REQUEST)
-    
-    if not request.user.check_password(old_password):
-        return Response({'error': 'Invalid old password'}, status=status.HTTP_400_BAD_REQUEST)
-    
-    request.user.set_password(new_password)
-    request.user.save()
-    return Response({'message': 'Password changed successfully'})
-```
-
-### 2. Cities Views (apps/cities/views.py)
-
-```python
-from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny
-from rest_framework.response import Response
-
-from .models import City
-from .serializers import CitySerializer
-from utils.permissions import IsAdmin
-from utils.pagination import StandardResultsPagination
-
-
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def list_cities(request):
-    """List all cities"""
-    cities = City.objects.all()
-    
-    # Search
-    search = request.query_params.get('search')
-    if search:
-        cities = cities.filter(name__icontains=search)
-    
-    paginator = StandardResultsPagination()
-    result_page = paginator.paginate_queryset(cities, request)
-    serializer = CitySerializer(result_page, many=True)
-    return paginator.get_paginated_response(serializer.data)
-
-
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def get_city(request, city_id):
-    """Get city by ID"""
-    try:
-        city = City.objects.get(id=city_id)
-        return Response(CitySerializer(city).data)
-    except City.DoesNotExist:
-        return Response({'error': 'City not found'}, status=status.HTTP_404_NOT_FOUND)
-
-
-@api_view(['POST'])
-@permission_classes([IsAdmin])
-def create_city(request):
-    """Create city (Admin only)"""
-    serializer = CitySerializer(data=request.data)
-    if serializer.is_valid():
-        serializer.save()
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-@api_view(['PUT', 'PATCH'])
-@permission_classes([IsAdmin])
-def update_city(request, city_id):
-    """Update city (Admin only)"""
-    try:
-        city = City.objects.get(id=city_id)
-    except City.DoesNotExist:
-        return Response({'error': 'City not found'}, status=status.HTTP_404_NOT_FOUND)
-    
-    serializer = CitySerializer(city, data=request.data, partial=request.method == 'PATCH')
-    if serializer.is_valid():
-        serializer.save()
-        return Response(serializer.data)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-@api_view(['DELETE'])
-@permission_classes([IsAdmin])
-def delete_city(request, city_id):
-    """Delete city (Admin only)"""
-    try:
-        city = City.objects.get(id=city_id)
-        city.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
-    except City.DoesNotExist:
-        return Response({'error': 'City not found'}, status=status.HTTP_404_NOT_FOUND)
-```
-
-### 3. Companies Views (apps/companies/views.py)
-
-```python
-from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny, IsAuthenticated
-from rest_framework.response import Response
-
-from .models import Company
-from .serializers import CompanySerializer, CompanyCreateSerializer
-from apps.accounts.models import AppRole, UserRole
-from utils.permissions import IsAdmin, IsOwnerOrAdmin
-from utils.pagination import StandardResultsPagination
-
-
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def list_companies(request):
-    """List verified companies"""
-    companies = Company.objects.filter(is_verified=True)
-    
-    # Filter by owner
-    owner_id = request.query_params.get('owner_id')
-    if owner_id:
-        companies = Company.objects.filter(owner_id=owner_id)
-    
-    # Search
-    search = request.query_params.get('search')
-    if search:
-        companies = companies.filter(name__icontains=search)
-    
-    paginator = StandardResultsPagination()
-    result_page = paginator.paginate_queryset(companies, request)
-    serializer = CompanySerializer(result_page, many=True)
-    return paginator.get_paginated_response(serializer.data)
-
-
-@api_view(['GET'])
-@permission_classes([IsAdmin])
-def list_all_companies(request):
-    """List all companies (Admin only)"""
-    companies = Company.objects.all()
-    paginator = StandardResultsPagination()
-    result_page = paginator.paginate_queryset(companies, request)
-    serializer = CompanySerializer(result_page, many=True)
-    return paginator.get_paginated_response(serializer.data)
-
-
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def get_company(request, company_id):
-    """Get company by ID"""
-    try:
-        company = Company.objects.get(id=company_id)
-        return Response(CompanySerializer(company).data)
-    except Company.DoesNotExist:
-        return Response({'error': 'Company not found'}, status=status.HTTP_404_NOT_FOUND)
-
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def my_company(request):
-    """Get current user's company"""
-    try:
-        company = Company.objects.get(owner=request.user)
-        return Response(CompanySerializer(company).data)
-    except Company.DoesNotExist:
-        return Response({'error': 'No company found'}, status=status.HTTP_404_NOT_FOUND)
-
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def create_company(request):
-    """Create a new company"""
-    serializer = CompanyCreateSerializer(data=request.data, context={'request': request})
-    if serializer.is_valid():
-        company = serializer.save()
-        # Assign company_admin role
-        UserRole.objects.get_or_create(user=request.user, role=AppRole.COMPANY_ADMIN)
-        return Response(CompanySerializer(company).data, status=status.HTTP_201_CREATED)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-@api_view(['PUT', 'PATCH'])
-@permission_classes([IsOwnerOrAdmin])
-def update_company(request, company_id):
-    """Update company"""
-    try:
-        company = Company.objects.get(id=company_id)
-    except Company.DoesNotExist:
-        return Response({'error': 'Company not found'}, status=status.HTTP_404_NOT_FOUND)
-    
-    # Check permission
-    if company.owner != request.user and not request.user.roles.filter(role=AppRole.ADMIN).exists():
-        return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
-    
-    serializer = CompanySerializer(company, data=request.data, partial=request.method == 'PATCH')
-    if serializer.is_valid():
-        serializer.save()
-        return Response(serializer.data)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-@api_view(['PATCH'])
-@permission_classes([IsAdmin])
-def verify_company(request, company_id):
-    """Verify company (Admin only)"""
-    try:
-        company = Company.objects.get(id=company_id)
-        company.is_verified = True
-        company.save()
-        return Response(CompanySerializer(company).data)
-    except Company.DoesNotExist:
-        return Response({'error': 'Company not found'}, status=status.HTTP_404_NOT_FOUND)
-```
-
-### 4. Buses Views (apps/buses/views.py)
-
-```python
-from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.response import Response
-
-from .models import Bus
-from .serializers import BusSerializer, BusCreateSerializer
-from apps.accounts.models import AppRole
-from utils.permissions import IsCompanyOwner, IsOwnerOrAdmin
-from utils.pagination import StandardResultsPagination
-
-
-@api_view(['GET'])
-@permission_classes([IsCompanyOwner])
-def list_buses(request):
-    """List buses for a company"""
-    company = request.user.companies.first()
-    if not company:
-        return Response({'error': 'No company found'}, status=status.HTTP_404_NOT_FOUND)
-    
-    buses = Bus.objects.filter(company=company)
-    
-    # Filter by company_id (for admin access)
-    company_id = request.query_params.get('company_id')
-    if company_id:
-        if request.user.roles.filter(role=AppRole.ADMIN).exists():
-            buses = Bus.objects.filter(company_id=company_id)
-        elif str(company.id) == company_id:
-            buses = Bus.objects.filter(company_id=company_id)
-        else:
-            return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
-    
-    # Filter by active status
-    is_active = request.query_params.get('is_active')
-    if is_active is not None:
-        buses = buses.filter(is_active=is_active.lower() == 'true')
-    
-    # Search by plate number
-    search = request.query_params.get('search')
-    if search:
-        buses = buses.filter(plate_number__icontains=search)
-    
-    paginator = StandardResultsPagination()
-    result_page = paginator.paginate_queryset(buses, request)
-    serializer = BusSerializer(result_page, many=True)
-    return paginator.get_paginated_response(serializer.data)
-
-
-@api_view(['GET'])
-@permission_classes([IsCompanyOwner])
-def get_bus(request, bus_id):
-    """Get bus details"""
-    try:
-        bus = Bus.objects.select_related('company').get(id=bus_id)
-        
-        # Check ownership
-        if bus.company.owner != request.user and not request.user.roles.filter(role=AppRole.ADMIN).exists():
-            return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
-        
-        return Response(BusSerializer(bus).data)
-    except Bus.DoesNotExist:
-        return Response({'error': 'Bus not found'}, status=status.HTTP_404_NOT_FOUND)
-
-
-@api_view(['POST'])
-@permission_classes([IsCompanyOwner])
-def create_bus(request):
-    """Create a new bus"""
-    company = request.user.companies.first()
-    if not company:
-        return Response({'error': 'No company found'}, status=status.HTTP_404_NOT_FOUND)
-    
-    serializer = BusCreateSerializer(data=request.data)
-    if serializer.is_valid():
-        bus = serializer.save(company=company)
-        return Response(BusSerializer(bus).data, status=status.HTTP_201_CREATED)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-@api_view(['PUT', 'PATCH'])
-@permission_classes([IsCompanyOwner])
-def update_bus(request, bus_id):
-    """Update bus details"""
-    try:
-        bus = Bus.objects.select_related('company').get(id=bus_id)
-    except Bus.DoesNotExist:
-        return Response({'error': 'Bus not found'}, status=status.HTTP_404_NOT_FOUND)
-    
-    # Check ownership
-    if bus.company.owner != request.user and not request.user.roles.filter(role=AppRole.ADMIN).exists():
-        return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
-    
-    serializer = BusSerializer(bus, data=request.data, partial=request.method == 'PATCH')
-    if serializer.is_valid():
-        serializer.save()
-        return Response(serializer.data)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-@api_view(['DELETE'])
-@permission_classes([IsCompanyOwner])
-def delete_bus(request, bus_id):
-    """Delete a bus"""
-    try:
-        bus = Bus.objects.select_related('company').get(id=bus_id)
-    except Bus.DoesNotExist:
-        return Response({'error': 'Bus not found'}, status=status.HTTP_404_NOT_FOUND)
-    
-    # Check ownership
-    if bus.company.owner != request.user and not request.user.roles.filter(role=AppRole.ADMIN).exists():
-        return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
-    
-    # Check if bus has active trips
-    from apps.trips.models import Trip, TripStatus
-    active_trips = Trip.objects.filter(
-        bus=bus,
-        status__in=[TripStatus.SCHEDULED, TripStatus.BOARDING]
-    ).exists()
-    
-    if active_trips:
-        return Response(
-            {'error': 'Cannot delete bus with active trips'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-    
-    bus.delete()
-    return Response(status=status.HTTP_204_NO_CONTENT)
-
-
-@api_view(['PATCH'])
-@permission_classes([IsCompanyOwner])
-def toggle_bus_status(request, bus_id):
-    """Toggle bus active status"""
-    try:
-        bus = Bus.objects.select_related('company').get(id=bus_id)
-    except Bus.DoesNotExist:
-        return Response({'error': 'Bus not found'}, status=status.HTTP_404_NOT_FOUND)
-    
-    # Check ownership
-    if bus.company.owner != request.user:
-        return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
-    
-    bus.is_active = not bus.is_active
-    bus.save()
-    return Response(BusSerializer(bus).data)
-```
-
-### 5. Routes Views (apps/routes/views.py)
-
-```python
-from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny, IsAuthenticated
-from rest_framework.response import Response
-
-from .models import Route
-from .serializers import RouteSerializer
-from apps.cities.models import City
-from apps.accounts.models import AppRole
-from utils.permissions import IsCompanyOwner, IsOwnerOrAdmin
-from utils.pagination import StandardResultsPagination
-
-
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def list_routes(request):
-    """List routes (public for searching, filtered for company owners)"""
-    routes = Route.objects.filter(is_active=True).select_related(
-        'origin_city', 'destination_city', 'company'
-    )
-    
-    # Filter by company_id
-    company_id = request.query_params.get('company_id')
-    if company_id:
-        routes = Route.objects.filter(company_id=company_id).select_related(
-            'origin_city', 'destination_city', 'company'
-        )
-    
-    # Filter by origin city
-    origin_city_id = request.query_params.get('origin_city_id')
-    if origin_city_id:
-        routes = routes.filter(origin_city_id=origin_city_id)
-    
-    # Filter by destination city
-    destination_city_id = request.query_params.get('destination_city_id')
-    if destination_city_id:
-        routes = routes.filter(destination_city_id=destination_city_id)
-    
-    # Filter by active status (for company owners)
-    is_active = request.query_params.get('is_active')
-    if is_active is not None:
-        routes = routes.filter(is_active=is_active.lower() == 'true')
-    
-    paginator = StandardResultsPagination()
-    result_page = paginator.paginate_queryset(routes, request)
-    serializer = RouteSerializer(result_page, many=True)
-    return paginator.get_paginated_response(serializer.data)
-
-
-@api_view(['GET'])
-@permission_classes([IsCompanyOwner])
-def my_routes(request):
-    """Get routes for current user's company"""
-    company = request.user.companies.first()
-    if not company:
-        return Response({'error': 'No company found'}, status=status.HTTP_404_NOT_FOUND)
-    
-    routes = Route.objects.filter(company=company).select_related(
-        'origin_city', 'destination_city'
-    )
-    
-    # Filter by active status
-    is_active = request.query_params.get('is_active')
-    if is_active is not None:
-        routes = routes.filter(is_active=is_active.lower() == 'true')
-    
-    paginator = StandardResultsPagination()
-    result_page = paginator.paginate_queryset(routes, request)
-    serializer = RouteSerializer(result_page, many=True)
-    return paginator.get_paginated_response(serializer.data)
-
-
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def get_route(request, route_id):
-    """Get route details"""
-    try:
-        route = Route.objects.select_related(
-            'origin_city', 'destination_city', 'company'
-        ).get(id=route_id)
-        return Response(RouteSerializer(route).data)
-    except Route.DoesNotExist:
-        return Response({'error': 'Route not found'}, status=status.HTTP_404_NOT_FOUND)
-
-
-@api_view(['POST'])
-@permission_classes([IsCompanyOwner])
-def create_route(request):
-    """Create a new route"""
-    company = request.user.companies.first()
-    if not company:
-        return Response({'error': 'No company found'}, status=status.HTTP_404_NOT_FOUND)
-    
-    # Validate cities exist
-    origin_city_id = request.data.get('origin_city_id')
-    destination_city_id = request.data.get('destination_city_id')
-    
-    if origin_city_id == destination_city_id:
-        return Response(
-            {'error': 'Origin and destination cities must be different'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-    
-    try:
-        origin_city = City.objects.get(id=origin_city_id)
-        destination_city = City.objects.get(id=destination_city_id)
-    except City.DoesNotExist:
-        return Response({'error': 'Invalid city ID'}, status=status.HTTP_400_BAD_REQUEST)
-    
-    # Check for duplicate route
-    existing_route = Route.objects.filter(
-        company=company,
-        origin_city=origin_city,
-        destination_city=destination_city
-    ).exists()
-    
-    if existing_route:
-        return Response(
-            {'error': 'Route already exists for this company'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-    
-    route = Route.objects.create(
-        company=company,
-        origin_city=origin_city,
-        destination_city=destination_city,
-        base_price=request.data.get('base_price'),
-        duration_hours=request.data.get('duration_hours'),
-        is_active=request.data.get('is_active', True)
-    )
-    
-    return Response(RouteSerializer(route).data, status=status.HTTP_201_CREATED)
-
-
-@api_view(['PUT', 'PATCH'])
-@permission_classes([IsCompanyOwner])
-def update_route(request, route_id):
-    """Update route details"""
-    try:
-        route = Route.objects.select_related('company').get(id=route_id)
-    except Route.DoesNotExist:
-        return Response({'error': 'Route not found'}, status=status.HTTP_404_NOT_FOUND)
-    
-    # Check ownership
-    if route.company.owner != request.user and not request.user.roles.filter(role=AppRole.ADMIN).exists():
-        return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
-    
-    # Handle city updates
-    origin_city_id = request.data.get('origin_city_id')
-    destination_city_id = request.data.get('destination_city_id')
-    
-    if origin_city_id:
-        try:
-            route.origin_city = City.objects.get(id=origin_city_id)
-        except City.DoesNotExist:
-            return Response({'error': 'Invalid origin city ID'}, status=status.HTTP_400_BAD_REQUEST)
-    
-    if destination_city_id:
-        try:
-            route.destination_city = City.objects.get(id=destination_city_id)
-        except City.DoesNotExist:
-            return Response({'error': 'Invalid destination city ID'}, status=status.HTTP_400_BAD_REQUEST)
-    
-    if route.origin_city == route.destination_city:
-        return Response(
-            {'error': 'Origin and destination cities must be different'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-    
-    # Update other fields
-    if 'base_price' in request.data:
-        route.base_price = request.data['base_price']
-    if 'duration_hours' in request.data:
-        route.duration_hours = request.data['duration_hours']
-    if 'is_active' in request.data:
-        route.is_active = request.data['is_active']
-    
-    route.save()
-    return Response(RouteSerializer(route).data)
-
-
-@api_view(['DELETE'])
-@permission_classes([IsCompanyOwner])
-def delete_route(request, route_id):
-    """Delete a route"""
-    try:
-        route = Route.objects.select_related('company').get(id=route_id)
-    except Route.DoesNotExist:
-        return Response({'error': 'Route not found'}, status=status.HTTP_404_NOT_FOUND)
-    
-    # Check ownership
-    if route.company.owner != request.user and not request.user.roles.filter(role=AppRole.ADMIN).exists():
-        return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
-    
-    # Check if route has active trips
-    from apps.trips.models import Trip, TripStatus
-    active_trips = Trip.objects.filter(
-        route=route,
-        status__in=[TripStatus.SCHEDULED, TripStatus.BOARDING]
-    ).exists()
-    
-    if active_trips:
-        return Response(
-            {'error': 'Cannot delete route with active trips'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-    
-    route.delete()
-    return Response(status=status.HTTP_204_NO_CONTENT)
-
-
-@api_view(['PATCH'])
-@permission_classes([IsCompanyOwner])
-def toggle_route_status(request, route_id):
-    """Toggle route active status"""
-    try:
-        route = Route.objects.select_related('company').get(id=route_id)
-    except Route.DoesNotExist:
-        return Response({'error': 'Route not found'}, status=status.HTTP_404_NOT_FOUND)
-    
-    # Check ownership
-    if route.company.owner != request.user:
-        return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
-    
-    route.is_active = not route.is_active
-    route.save()
-    return Response(RouteSerializer(route).data)
-```
-
-### 6. Trips Views (apps/trips/views.py)
-
-```python
-from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny, IsAuthenticated
-from rest_framework.response import Response
-from django.utils import timezone
-
-from .models import Trip, TripStatus
-from .serializers import TripSerializer, TripSearchSerializer
-from apps.accounts.models import AppRole
-from utils.permissions import IsCompanyOwner
-from utils.pagination import TripsPagination, SeatsPagination
-
-
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def search_trips(request):
-    """
-    Search trips with parameters:
-    - origin_city_id: UUID
-    - destination_city_id: UUID
-    - departure_date: YYYY-MM-DD
-    - min_seats: minimum available seats (default: 1)
-    """
-    trips = Trip.objects.select_related(
-        'route__origin_city',
-        'route__destination_city',
-        'route__company',
-        'bus'
-    ).filter(
-        status=TripStatus.SCHEDULED,
-        departure_time__gt=timezone.now()
-    )
-    
-    # Filters
-    origin_city_id = request.query_params.get('origin_city_id')
-    destination_city_id = request.query_params.get('destination_city_id')
-    departure_date = request.query_params.get('departure_date')
-    min_seats = request.query_params.get('min_seats', 1)
-    
-    if origin_city_id:
-        trips = trips.filter(route__origin_city_id=origin_city_id)
-    if destination_city_id:
-        trips = trips.filter(route__destination_city_id=destination_city_id)
-    if departure_date:
-        trips = trips.filter(departure_time__date=departure_date)
-    if min_seats:
-        trips = trips.filter(available_seats__gte=int(min_seats))
-    
-    trips = trips.order_by('departure_time')
-    
-    paginator = TripsPagination()
-    result_page = paginator.paginate_queryset(trips, request)
-    serializer = TripSearchSerializer(result_page, many=True)
-    return paginator.get_paginated_response(serializer.data)
-
-
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def get_trip(request, trip_id):
-    """Get trip details with full nested data"""
-    try:
-        trip = Trip.objects.select_related(
-            'route__origin_city',
-            'route__destination_city',
-            'route__company',
-            'bus'
-        ).get(id=trip_id)
-        return Response(TripSerializer(trip).data)
-    except Trip.DoesNotExist:
-        return Response({'error': 'Trip not found'}, status=status.HTTP_404_NOT_FOUND)
-
-
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def get_trip_seats(request, trip_id):
-    """Get available and booked seats for a trip"""
-    try:
-        trip = Trip.objects.prefetch_related('bookings').get(id=trip_id)
-    except Trip.DoesNotExist:
-        return Response({'error': 'Trip not found'}, status=status.HTTP_404_NOT_FOUND)
-    
-    # Get all booked seats
-    booked_seats = set()
-    for booking in trip.bookings.exclude(status__in=['cancelled', 'expired']):
-        booked_seats.update(booking.seats)
-    
-    # Generate all seats
-    total_seats = trip.bus.total_seats
-    all_seats = []
-    for i in range(1, total_seats + 1):
-        seat_number = str(i)
-        all_seats.append({
-            'seat_number': seat_number,
-            'is_available': seat_number not in booked_seats
-        })
-    
-    paginator = SeatsPagination()
-    result_page = paginator.paginate_queryset(all_seats, request)
-    return paginator.get_paginated_response(result_page)
-
-
-@api_view(['GET'])
-@permission_classes([IsCompanyOwner])
-def my_trips(request):
-    """Get trips for current user's company"""
-    try:
-        company = request.user.companies.first()
-        if not company:
-            return Response({'error': 'No company found'}, status=status.HTTP_404_NOT_FOUND)
-        
-        trips = Trip.objects.filter(route__company=company).select_related(
-            'route__origin_city',
-            'route__destination_city',
-            'bus'
-        )
-        
-        paginator = TripsPagination()
-        result_page = paginator.paginate_queryset(trips, request)
-        serializer = TripSerializer(result_page, many=True)
-        return paginator.get_paginated_response(serializer.data)
-    except Exception as e:
-        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-@api_view(['POST'])
-@permission_classes([IsCompanyOwner])
-def create_trip(request):
-    """Create a new trip"""
-    serializer = TripSerializer(data=request.data)
-    if serializer.is_valid():
-        serializer.save()
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-@api_view(['PUT', 'PATCH'])
-@permission_classes([IsCompanyOwner])
-def update_trip(request, trip_id):
-    """Update trip"""
-    try:
-        trip = Trip.objects.get(id=trip_id)
-    except Trip.DoesNotExist:
-        return Response({'error': 'Trip not found'}, status=status.HTTP_404_NOT_FOUND)
-    
-    # Check ownership
-    if trip.route.company.owner != request.user:
-        return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
-    
-    serializer = TripSerializer(trip, data=request.data, partial=request.method == 'PATCH')
-    if serializer.is_valid():
-        serializer.save()
-        return Response(serializer.data)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-@api_view(['DELETE'])
-@permission_classes([IsCompanyOwner])
-def delete_trip(request, trip_id):
-    """Delete trip"""
-    try:
-        trip = Trip.objects.get(id=trip_id)
-    except Trip.DoesNotExist:
-        return Response({'error': 'Trip not found'}, status=status.HTTP_404_NOT_FOUND)
-    
-    # Check ownership
-    if trip.route.company.owner != request.user:
-        return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
-    
-    trip.delete()
-    return Response(status=status.HTTP_204_NO_CONTENT)
-```
-
-### 5. Bookings Views (apps/bookings/views.py)
-
-```python
-from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.response import Response
-from django.utils import timezone
-
-from .models import Booking, BookingPassenger, BookingStatus
-from .serializers import BookingSerializer, BookingCreateSerializer, BookingPassengerSerializer
-from apps.accounts.models import AppRole
-from utils.permissions import IsAdmin, IsCompanyOwner
-from utils.pagination import BookingsPagination
-
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def my_bookings(request):
-    """Get current user's bookings"""
-    bookings = Booking.objects.filter(user=request.user).select_related(
-        'trip__route__origin_city',
-        'trip__route__destination_city',
-        'trip__route__company',
-        'trip__bus'
-    )
-    
-    # Filter by user_id (for admin access)
-    user_id = request.query_params.get('user_id')
-    if user_id and request.user.roles.filter(role=AppRole.ADMIN).exists():
-        bookings = Booking.objects.filter(user_id=user_id)
-    
-    paginator = BookingsPagination()
-    result_page = paginator.paginate_queryset(bookings, request)
-    serializer = BookingSerializer(result_page, many=True)
-    return paginator.get_paginated_response(serializer.data)
-
-
-@api_view(['GET'])
-@permission_classes([IsAdmin])
-def all_bookings(request):
-    """Get all bookings (Admin only)"""
-    bookings = Booking.objects.all().select_related(
-        'trip__route__origin_city',
-        'trip__route__destination_city',
-        'trip__route__company',
-        'trip__bus',
-        'user'
-    )
-    
-    paginator = BookingsPagination()
-    result_page = paginator.paginate_queryset(bookings, request)
-    serializer = BookingSerializer(result_page, many=True)
-    return paginator.get_paginated_response(serializer.data)
-
-
-@api_view(['GET'])
-@permission_classes([IsCompanyOwner])
-def company_bookings(request):
-    """Get bookings for current user's company"""
-    company = request.user.companies.first()
-    if not company:
-        return Response({'error': 'No company found'}, status=status.HTTP_404_NOT_FOUND)
-    
-    bookings = Booking.objects.filter(trip__route__company=company).select_related(
-        'trip__route__origin_city',
-        'trip__route__destination_city',
-        'trip__bus',
-        'user'
-    )
-    
-    # Filter by company_id
-    company_id = request.query_params.get('company_id')
-    if company_id:
-        bookings = Booking.objects.filter(trip__route__company_id=company_id)
-    
-    paginator = BookingsPagination()
-    result_page = paginator.paginate_queryset(bookings, request)
-    serializer = BookingSerializer(result_page, many=True)
-    return paginator.get_paginated_response(serializer.data)
-
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def get_booking(request, booking_id):
-    """Get booking details"""
-    try:
-        booking = Booking.objects.select_related(
-            'trip__route__origin_city',
-            'trip__route__destination_city',
-            'trip__route__company',
-            'trip__bus'
-        ).prefetch_related('passengers').get(id=booking_id)
-        
-        # Check ownership
-        if booking.user != request.user and not request.user.roles.filter(role=AppRole.ADMIN).exists():
-            if booking.trip.route.company.owner != request.user:
-                return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
-        
-        return Response(BookingSerializer(booking).data)
-    except Booking.DoesNotExist:
-        return Response({'error': 'Booking not found'}, status=status.HTTP_404_NOT_FOUND)
-
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def booking_passengers(request, booking_id):
-    """Get passengers for a booking"""
-    try:
-        booking = Booking.objects.get(id=booking_id)
-        
-        # Check ownership
-        if booking.user != request.user and not request.user.roles.filter(role=AppRole.ADMIN).exists():
-            if booking.trip.route.company.owner != request.user:
-                return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
-        
-        passengers = BookingPassenger.objects.filter(booking=booking)
-        serializer = BookingPassengerSerializer(passengers, many=True)
-        return Response(serializer.data)
-    except Booking.DoesNotExist:
-        return Response({'error': 'Booking not found'}, status=status.HTTP_404_NOT_FOUND)
-
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def create_booking(request):
-    """Create a new booking"""
-    serializer = BookingCreateSerializer(data=request.data, context={'request': request})
-    if serializer.is_valid():
-        booking = serializer.save()
-        return Response(BookingSerializer(booking).data, status=status.HTTP_201_CREATED)
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def confirm_payment(request, booking_id):
-    """Confirm payment for a booking"""
-    try:
-        booking = Booking.objects.get(id=booking_id, user=request.user)
-        
-        if booking.status != BookingStatus.PENDING:
-            return Response({'error': 'Booking is not pending'}, status=status.HTTP_400_BAD_REQUEST)
-        
-        if booking.hold_expires_at and booking.hold_expires_at < timezone.now():
-            booking.status = BookingStatus.EXPIRED
-            booking.save()
-            return Response({'error': 'Booking has expired'}, status=status.HTTP_400_BAD_REQUEST)
-        
-        booking.status = BookingStatus.CONFIRMED
-        booking.payment_completed_at = timezone.now()
-        booking.save()
-        
-        return Response(BookingSerializer(booking).data)
-    except Booking.DoesNotExist:
-        return Response({'error': 'Booking not found'}, status=status.HTTP_404_NOT_FOUND)
-
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def cancel_booking(request, booking_id):
-    """Cancel a booking"""
-    try:
-        booking = Booking.objects.get(id=booking_id, user=request.user)
-        
-        if booking.status == BookingStatus.CANCELLED:
-            return Response({'error': 'Booking already cancelled'}, status=status.HTTP_400_BAD_REQUEST)
-        
-        reason = request.data.get('reason', '')
-        booking.status = BookingStatus.CANCELLED
-        booking.cancelled_at = timezone.now()
-        booking.cancellation_reason = reason
-        booking.save()
-        
-        # Restore available seats
-        booking.trip.available_seats += len(booking.seats)
-        booking.trip.save()
-        
-        return Response(BookingSerializer(booking).data)
-    except Booking.DoesNotExist:
-        return Response({'error': 'Booking not found'}, status=status.HTTP_404_NOT_FOUND)
-```
-
----
-
-## URL Configuration
-
-### Main URLs (bus_booking/urls.py)
-
-```python
-from django.contrib import admin
-from django.urls import path, include
-from rest_framework import permissions
-from drf_yasg.views import get_schema_view
-from drf_yasg import openapi
-
-schema_view = get_schema_view(
-    openapi.Info(
-        title="Bus Booking API",
-        default_version='v1',
-        description="API for bus booking system",
-    ),
-    public=True,
-    permission_classes=[permissions.AllowAny],
-)
-
-urlpatterns = [
-    path('admin/', admin.site.urls),
-    path('api/v1/auth/', include('apps.accounts.urls')),
-    path('api/v1/cities/', include('apps.cities.urls')),
-    path('api/v1/companies/', include('apps.companies.urls')),
-    path('api/v1/buses/', include('apps.buses.urls')),
-    path('api/v1/routes/', include('apps.routes.urls')),
-    path('api/v1/trips/', include('apps.trips.urls')),
-    path('api/v1/bookings/', include('apps.bookings.urls')),
-    
-    # API Documentation
-    path('swagger/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
-    path('redoc/', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc'),
-]
-```
-
-### Accounts URLs (apps/accounts/urls.py)
-
-```python
-from django.urls import path
-from rest_framework_simplejwt.views import TokenRefreshView
-from . import views
-
-urlpatterns = [
-    path('register/', views.register, name='register'),
-    path('login/', views.login, name='login'),
-    path('logout/', views.logout, name='logout'),
-    path('refresh/', TokenRefreshView.as_view(), name='token-refresh'),
-    path('me/', views.me, name='me'),
-    path('profile/', views.profile, name='profile'),
-    path('password-reset/', views.password_reset, name='password-reset'),
-    path('password-change/', views.password_change, name='password-change'),
-    path('users/', views.list_users, name='list-users'),
-    path('roles/assign/', views.assign_role, name='assign-role'),
-    path('roles/<uuid:user_id>/<str:role>/', views.remove_role, name='remove-role'),
-    path('user-roles/', views.list_user_roles, name='list-user-roles'),
-    path('user-roles/check/', views.check_user_role, name='check-user-role'),
-]
-```
-
-### Cities URLs (apps/cities/urls.py)
-
-```python
-from django.urls import path
-from . import views
-
-urlpatterns = [
-    path('', views.list_cities, name='list-cities'),
-    path('<uuid:city_id>/', views.get_city, name='get-city'),
-    path('create/', views.create_city, name='create-city'),
-    path('<uuid:city_id>/update/', views.update_city, name='update-city'),
-    path('<uuid:city_id>/delete/', views.delete_city, name='delete-city'),
-]
-```
-
-### Companies URLs (apps/companies/urls.py)
-
-```python
-from django.urls import path
-from . import views
-
-urlpatterns = [
-    path('', views.list_companies, name='list-companies'),
-    path('all/', views.list_all_companies, name='list-all-companies'),
-    path('my/', views.my_company, name='my-company'),
-    path('<uuid:company_id>/', views.get_company, name='get-company'),
-    path('create/', views.create_company, name='create-company'),
-    path('<uuid:company_id>/update/', views.update_company, name='update-company'),
-    path('<uuid:company_id>/verify/', views.verify_company, name='verify-company'),
-]
-```
-
-### Buses URLs (apps/buses/urls.py)
-
-```python
-from django.urls import path
-from . import views
-
-urlpatterns = [
-    path('', views.list_buses, name='list-buses'),
-    path('<uuid:bus_id>/', views.get_bus, name='get-bus'),
-    path('create/', views.create_bus, name='create-bus'),
-    path('<uuid:bus_id>/update/', views.update_bus, name='update-bus'),
-    path('<uuid:bus_id>/delete/', views.delete_bus, name='delete-bus'),
-    path('<uuid:bus_id>/toggle-status/', views.toggle_bus_status, name='toggle-bus-status'),
-]
-```
-
-### Routes URLs (apps/routes/urls.py)
-
-```python
-from django.urls import path
-from . import views
-
-urlpatterns = [
-    path('', views.list_routes, name='list-routes'),
-    path('my/', views.my_routes, name='my-routes'),
-    path('<uuid:route_id>/', views.get_route, name='get-route'),
-    path('create/', views.create_route, name='create-route'),
-    path('<uuid:route_id>/update/', views.update_route, name='update-route'),
-    path('<uuid:route_id>/delete/', views.delete_route, name='delete-route'),
-    path('<uuid:route_id>/toggle-status/', views.toggle_route_status, name='toggle-route-status'),
-]
-```
-
-### Trips URLs (apps/trips/urls.py)
-
-```python
-from django.urls import path
-from . import views
-
-urlpatterns = [
-    path('search/', views.search_trips, name='search-trips'),
-    path('my/', views.my_trips, name='my-trips'),
-    path('<uuid:trip_id>/', views.get_trip, name='get-trip'),
-    path('<uuid:trip_id>/seats/', views.get_trip_seats, name='get-trip-seats'),
-    path('create/', views.create_trip, name='create-trip'),
-    path('<uuid:trip_id>/update/', views.update_trip, name='update-trip'),
-    path('<uuid:trip_id>/delete/', views.delete_trip, name='delete-trip'),
-]
-```
-
-### Bookings URLs (apps/bookings/urls.py)
-
-```python
-from django.urls import path
-from . import views
-
-urlpatterns = [
-    path('', views.my_bookings, name='my-bookings'),
-    path('all/', views.all_bookings, name='all-bookings'),
-    path('company/', views.company_bookings, name='company-bookings'),
-    path('<uuid:booking_id>/', views.get_booking, name='get-booking'),
-    path('<uuid:booking_id>/passengers/', views.booking_passengers, name='booking-passengers'),
-    path('create/', views.create_booking, name='create-booking'),
-    path('<uuid:booking_id>/confirm-payment/', views.confirm_payment, name='confirm-payment'),
-    path('<uuid:booking_id>/cancel/', views.cancel_booking, name='cancel-booking'),
-]
-```
-
----
-
-## API Endpoints Summary
-
-| Endpoint | Method | Description | Auth Required |
-|----------|--------|-------------|---------------|
-| **Authentication** |
-| `/api/v1/auth/register/` | POST | Register new user | No |
-| `/api/v1/auth/login/` | POST | Login user | No |
-| `/api/v1/auth/logout/` | POST | Logout user | Yes |
-| `/api/v1/auth/refresh/` | POST | Refresh access token | No |
-| `/api/v1/auth/me/` | GET | Get current user | Yes |
-| `/api/v1/auth/profile/` | GET, PUT, PATCH | User profile | Yes |
-| `/api/v1/auth/password-reset/` | POST | Request password reset | No |
-| `/api/v1/auth/password-change/` | POST | Change password | Yes |
-| `/api/v1/auth/users/` | GET | List users (Admin) | Admin |
-| `/api/v1/auth/roles/assign/` | POST | Assign role (Admin) | Admin |
-| `/api/v1/auth/roles/{user_id}/{role}/` | DELETE | Remove role (Admin) | Admin |
-| `/api/v1/auth/user-roles/` | GET | List user roles | Yes |
-| `/api/v1/auth/user-roles/check/` | GET | Check user role | Yes |
-| **Cities** |
-| `/api/v1/cities/` | GET | List cities | No |
-| `/api/v1/cities/{id}/` | GET | Get city | No |
-| `/api/v1/cities/create/` | POST | Create city (Admin) | Admin |
-| `/api/v1/cities/{id}/update/` | PUT, PATCH | Update city (Admin) | Admin |
-| `/api/v1/cities/{id}/delete/` | DELETE | Delete city (Admin) | Admin |
-| **Companies** |
-| `/api/v1/companies/` | GET | List verified companies | No |
-| `/api/v1/companies/all/` | GET | List all companies (Admin) | Admin |
-| `/api/v1/companies/my/` | GET | Get my company | Owner |
-| `/api/v1/companies/{id}/` | GET | Get company | No |
-| `/api/v1/companies/create/` | POST | Create company | Yes |
-| `/api/v1/companies/{id}/update/` | PUT, PATCH | Update company | Owner |
-| `/api/v1/companies/{id}/verify/` | PATCH | Verify company (Admin) | Admin |
-| **Buses** |
-| `/api/v1/buses/` | GET | List buses (filter by company_id) | Owner |
-| `/api/v1/buses/{id}/` | GET | Get bus details | Owner |
-| `/api/v1/buses/create/` | POST | Create bus | Owner |
-| `/api/v1/buses/{id}/update/` | PUT, PATCH | Update bus | Owner |
-| `/api/v1/buses/{id}/delete/` | DELETE | Delete bus | Owner |
-| `/api/v1/buses/{id}/toggle-status/` | PATCH | Toggle bus active status | Owner |
-| **Routes** |
-| `/api/v1/routes/` | GET | List routes (filter by company_id) | No |
-| `/api/v1/routes/my/` | GET | My company's routes | Owner |
-| `/api/v1/routes/{id}/` | GET | Get route details | No |
-| `/api/v1/routes/create/` | POST | Create route | Owner |
-| `/api/v1/routes/{id}/update/` | PUT, PATCH | Update route | Owner |
-| `/api/v1/routes/{id}/delete/` | DELETE | Delete route | Owner |
-| `/api/v1/routes/{id}/toggle-status/` | PATCH | Toggle route active status | Owner |
-| **Trips** |
-| `/api/v1/trips/search/` | GET | Search trips | No |
-| `/api/v1/trips/my/` | GET | My company's trips | Owner |
-| `/api/v1/trips/{id}/` | GET | Get trip | No |
-| `/api/v1/trips/{id}/seats/` | GET | Get seats (paginated) | No |
-| `/api/v1/trips/create/` | POST | Create trip | Owner |
-| `/api/v1/trips/{id}/update/` | PUT, PATCH | Update trip | Owner |
-| `/api/v1/trips/{id}/delete/` | DELETE | Delete trip | Owner |
-| **Bookings** |
-| `/api/v1/bookings/` | GET | My bookings (paginated) | Yes |
-| `/api/v1/bookings/all/` | GET | All bookings (Admin) | Admin |
-| `/api/v1/bookings/company/` | GET | Company bookings | Owner |
-| `/api/v1/bookings/{id}/` | GET | Get booking | Yes |
-| `/api/v1/bookings/{id}/passengers/` | GET | Get passengers | Yes |
-| `/api/v1/bookings/create/` | POST | Create booking | Yes |
-| `/api/v1/bookings/{id}/confirm-payment/` | POST | Confirm payment | Yes |
-| `/api/v1/bookings/{id}/cancel/` | POST | Cancel booking | Yes |
-
----
-
-## Environment Variables (.env.example)
-
-```env
-# Django
-DJANGO_SECRET_KEY=your-secret-key-here-change-in-production
-DEBUG=True
-ALLOWED_HOSTS=localhost,127.0.0.1
-
-# CORS
-CORS_ORIGINS=http://localhost:3000,http://localhost:5173,http://localhost:8080
-
-# Email (optional - uses console backend in development)
-EMAIL_HOST=smtp.gmail.com
-EMAIL_PORT=587
-EMAIL_HOST_USER=your-email@gmail.com
-EMAIL_HOST_PASSWORD=your-app-password
-DEFAULT_FROM_EMAIL=noreply@busbooking.com
-
-# Payment Gateway (optional)
-PAYSTACK_SECRET_KEY=your-paystack-secret
-FLUTTERWAVE_SECRET_KEY=your-flutterwave-secret
-```
-
----
-
-## Entity Relationship Diagram
-
-```
-┌──────────────┐     ┌──────────────┐     ┌──────────────┐
-│    User      │     │   Profile    │     │  UserRole    │
-├──────────────┤     ├──────────────┤     ├──────────────┤
-│ id (PK)      │◄───►│ user (FK)    │     │ user (FK)    │
-│ email        │     │ full_name    │     │ role         │
-│ full_name    │     │ phone        │     └──────────────┘
-│ phone        │     └──────────────┘
-│ password     │
-└──────┬───────┘
-       │
-       │ owns
-       ▼
-┌──────────────┐
-│   Company    │
-├──────────────┤
-│ id (PK)      │──────────────────────────────────────┐
-│ owner (FK)   │                                      │
-│ name         │                                      │
-│ logo_url     │                                      │
-│ rating       │                                      │
-│ is_verified  │                                      │
-└──────┬───────┘                                      │
-       │                                              │
-       │ has                                          │
-       ▼                                              │
-┌──────────────┐     ┌──────────────┐                │
-│    Bus       │     │    Route     │                │
-├──────────────┤     ├──────────────┤                │
-│ id (PK)      │     │ id (PK)      │◄───────────────┘
-│ company (FK) │     │ company (FK) │
-│ plate_number │     │ origin (FK)  │──────► City
-│ bus_type     │     │ dest (FK)    │──────► City
-│ total_seats  │     │ base_price   │
-│ amenities    │     │ duration     │
-└──────┬───────┘     └──────┬───────┘
-       │                    │
-       │         ┌──────────┘
-       ▼         ▼
-┌─────────────────────┐
-│        Trip         │
-├─────────────────────┤
-│ id (PK)             │
-│ route (FK)          │
-│ bus (FK)            │
-│ departure_time      │
-│ arrival_time        │
-│ price               │
-│ available_seats     │
-│ status              │
-└──────────┬──────────┘
-           │
-           │ has
-           ▼
-┌─────────────────────┐     ┌────────────────────┐
-│      Booking        │     │  BookingPassenger  │
-├─────────────────────┤     ├────────────────────┤
-│ id (PK)             │◄───►│ booking (FK)       │
-│ trip (FK)           │     │ full_name          │
-│ user (FK)           │     │ phone              │
-│ seats (JSON)        │     │ email              │
-│ total_amount        │     │ nin                │
-│ status              │     │ seat_number        │
-│ ticket_code         │     └────────────────────┘
-│ passenger_name      │
-│ passenger_email     │
-│ passenger_phone     │
-│ hold_expires_at     │
-│ payment_completed_at│
-└─────────────────────┘
-```
-
----
-
-## Sample Data Fixtures (fixtures/sample_data.json)
-
-```json
-[
-  {
-    "model": "cities.city",
-    "pk": "550e8400-e29b-41d4-a716-446655440001",
-    "fields": {
-      "name": "Lagos",
-      "state": "Lagos",
-      "created_at": "2024-01-01T00:00:00Z"
-    }
-  },
-  {
-    "model": "cities.city",
-    "pk": "550e8400-e29b-41d4-a716-446655440002",
-    "fields": {
-      "name": "Abuja",
-      "state": "FCT",
-      "created_at": "2024-01-01T00:00:00Z"
-    }
-  },
-  {
-    "model": "cities.city",
-    "pk": "550e8400-e29b-41d4-a716-446655440003",
-    "fields": {
-      "name": "Port Harcourt",
-      "state": "Rivers",
-      "created_at": "2024-01-01T00:00:00Z"
-    }
-  },
-  {
-    "model": "cities.city",
-    "pk": "550e8400-e29b-41d4-a716-446655440004",
-    "fields": {
-      "name": "Kano",
-      "state": "Kano",
-      "created_at": "2024-01-01T00:00:00Z"
-    }
-  },
-  {
-    "model": "cities.city",
-    "pk": "550e8400-e29b-41d4-a716-446655440005",
-    "fields": {
-      "name": "Ibadan",
-      "state": "Oyo",
-      "created_at": "2024-01-01T00:00:00Z"
-    }
-  },
-  {
-    "model": "cities.city",
-    "pk": "550e8400-e29b-41d4-a716-446655440006",
-    "fields": {
-      "name": "Benin City",
-      "state": "Edo",
-      "created_at": "2024-01-01T00:00:00Z"
-    }
-  },
-  {
-    "model": "cities.city",
-    "pk": "550e8400-e29b-41d4-a716-446655440007",
-    "fields": {
-      "name": "Enugu",
-      "state": "Enugu",
-      "created_at": "2024-01-01T00:00:00Z"
-    }
-  },
-  {
-    "model": "cities.city",
-    "pk": "550e8400-e29b-41d4-a716-446655440008",
-    "fields": {
-      "name": "Calabar",
-      "state": "Cross River",
-      "created_at": "2024-01-01T00:00:00Z"
-    }
-  }
-]
-```
-
----
-
-## Background Tasks (Management Commands)
-
-Without Celery/Redis, use Django management commands for background tasks:
+## Background Tasks
 
 ### Expire Pending Bookings (apps/bookings/management/commands/expire_bookings.py)
 
@@ -2608,313 +2606,56 @@ class Command(BaseCommand):
         )
 ```
 
-### Send Departure Reminders (apps/bookings/management/commands/send_reminders.py)
-
-```python
-from django.core.management.base import BaseCommand
-from django.utils import timezone
-from datetime import timedelta
-from django.core.mail import send_mail
-from django.conf import settings
-from apps.bookings.models import Booking, BookingStatus
-
-
-class Command(BaseCommand):
-    help = 'Send departure reminders for bookings departing in 24 hours'
-
-    def handle(self, *args, **options):
-        tomorrow = timezone.now() + timedelta(hours=24)
-        today = timezone.now()
-        
-        bookings = Booking.objects.filter(
-            status=BookingStatus.CONFIRMED,
-            trip__departure_time__range=(today, tomorrow)
-        ).select_related('trip__route__origin_city', 'trip__route__destination_city')
-        
-        count = 0
-        for booking in bookings:
-            try:
-                send_mail(
-                    subject=f'Reminder: Your trip tomorrow - {booking.ticket_code}',
-                    message=f'''
-Dear {booking.passenger_name},
-
-This is a reminder that your trip is tomorrow!
-
-Ticket Code: {booking.ticket_code}
-Route: {booking.trip.route.origin_city.name} to {booking.trip.route.destination_city.name}
-Departure: {booking.trip.departure_time.strftime('%Y-%m-%d %H:%M')}
-Seats: {', '.join(booking.seats)}
-
-Please arrive at least 30 minutes before departure.
-
-Safe travels!
-                    ''',
-                    from_email=settings.DEFAULT_FROM_EMAIL,
-                    recipient_list=[booking.passenger_email],
-                    fail_silently=True
-                )
-                count += 1
-            except Exception as e:
-                self.stderr.write(f'Failed to send reminder for {booking.ticket_code}: {e}')
-        
-        self.stdout.write(
-            self.style.SUCCESS(f'Sent {count} departure reminders')
-        )
-```
-
-### Scheduling with Cron
+### Cron Setup
 
 ```bash
-# Edit crontab
-crontab -e
-
-# Add these lines:
 # Expire pending bookings every 5 minutes
 */5 * * * * cd /path/to/project && /path/to/venv/bin/python manage.py expire_bookings
-
-# Send departure reminders daily at 8 AM
-0 8 * * * cd /path/to/project && /path/to/venv/bin/python manage.py send_reminders
 ```
 
 ---
 
-## Testing Strategy
+## Environment Variables (.env.example)
 
-### Test Configuration (pytest.ini)
+```env
+# Django
+DJANGO_SECRET_KEY=your-secret-key-here-change-in-production
+DEBUG=True
+ALLOWED_HOSTS=localhost,127.0.0.1
 
-```ini
-[pytest]
-DJANGO_SETTINGS_MODULE = bus_booking.settings_test
-python_files = tests.py test_*.py *_test.py
-addopts = -v --tb=short
-```
+# CORS - Add your frontend URLs
+CORS_ORIGINS=http://localhost:3000,http://localhost:5173,http://localhost:8080
 
-### Test Fixtures (tests/conftest.py)
-
-```python
-import pytest
-from rest_framework.test import APIClient
-from apps.accounts.models import User, UserRole, AppRole
-
-
-@pytest.fixture
-def api_client():
-    return APIClient()
-
-
-@pytest.fixture
-def create_user():
-    def _create_user(email='test@example.com', password='testpass123', **kwargs):
-        user = User.objects.create_user(email=email, password=password, **kwargs)
-        UserRole.objects.create(user=user, role=AppRole.PASSENGER)
-        return user
-    return _create_user
-
-
-@pytest.fixture
-def authenticated_client(api_client, create_user):
-    user = create_user()
-    api_client.force_authenticate(user=user)
-    return api_client, user
-
-
-@pytest.fixture
-def admin_client(api_client, create_user):
-    user = create_user(email='admin@example.com')
-    UserRole.objects.create(user=user, role=AppRole.ADMIN)
-    api_client.force_authenticate(user=user)
-    return api_client, user
-```
-
-### Example Unit Tests (tests/test_unit/test_models.py)
-
-```python
-import pytest
-from apps.accounts.models import User, UserRole, AppRole
-from apps.cities.models import City
-
-
-@pytest.mark.django_db
-class TestUserModel:
-    def test_create_user(self):
-        user = User.objects.create_user(
-            email='test@example.com',
-            password='testpass123',
-            full_name='Test User'
-        )
-        assert user.email == 'test@example.com'
-        assert user.full_name == 'Test User'
-        assert user.check_password('testpass123')
-    
-    def test_create_superuser(self):
-        user = User.objects.create_superuser(
-            email='admin@example.com',
-            password='adminpass123'
-        )
-        assert user.is_staff
-        assert user.is_superuser
-
-
-@pytest.mark.django_db
-class TestCityModel:
-    def test_create_city(self):
-        city = City.objects.create(name='Lagos', state='Lagos')
-        assert str(city) == 'Lagos, Lagos'
-```
-
-### Example Integration Tests (tests/test_integration/test_auth.py)
-
-```python
-import pytest
-from django.urls import reverse
-
-
-@pytest.mark.django_db
-class TestAuthEndpoints:
-    def test_register(self, api_client):
-        response = api_client.post('/api/v1/auth/register/', {
-            'email': 'newuser@example.com',
-            'password': 'newpass123',
-            'password_confirm': 'newpass123',
-            'full_name': 'New User'
-        })
-        assert response.status_code == 201
-        assert 'access' in response.data
-        assert 'refresh' in response.data
-    
-    def test_login(self, api_client, create_user):
-        create_user(email='login@example.com', password='loginpass')
-        response = api_client.post('/api/v1/auth/login/', {
-            'email': 'login@example.com',
-            'password': 'loginpass'
-        })
-        assert response.status_code == 200
-        assert 'access' in response.data
-    
-    def test_me(self, authenticated_client):
-        client, user = authenticated_client
-        response = client.get('/api/v1/auth/me/')
-        assert response.status_code == 200
-        assert response.data['email'] == user.email
-```
-
-### Run Tests
-
-```bash
-# Run all tests
-pytest
-
-# Run with coverage
-pytest --cov=apps --cov-report=html
-
-# Run specific test file
-pytest tests/test_unit/test_models.py
-
-# Run in parallel
-pytest -n auto
+# Email (optional)
+EMAIL_HOST=smtp.gmail.com
+EMAIL_PORT=587
+EMAIL_HOST_USER=your-email@gmail.com
+EMAIL_HOST_PASSWORD=your-app-password
+DEFAULT_FROM_EMAIL=noreply@busbooking.com
 ```
 
 ---
 
-## CI/CD Pipeline (.github/workflows/django.yml)
+## Frontend Integration Checklist
 
-```yaml
-name: Django CI
+Before deploying, verify:
 
-on:
-  push:
-    branches: [main, develop]
-  pull_request:
-    branches: [main]
-
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'
-    
-    - name: Cache pip packages
-      uses: actions/cache@v3
-      with:
-        path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
-        restore-keys: |
-          ${{ runner.os }}-pip-
-    
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-    
-    - name: Run migrations
-      env:
-        DJANGO_SECRET_KEY: test-secret-key
-        DEBUG: 'True'
-      run: |
-        python manage.py migrate
-    
-    - name: Run tests
-      env:
-        DJANGO_SECRET_KEY: test-secret-key
-        DEBUG: 'True'
-      run: |
-        pytest --cov=apps --cov-report=xml --junitxml=test-results.xml -n auto
-    
-    - name: Upload coverage
-      uses: codecov/codecov-action@v3
-      with:
-        files: coverage.xml
-    
-    - name: Upload test results
-      uses: actions/upload-artifact@v3
-      with:
-        name: test-results
-        path: test-results.xml
-
-  lint:
-    runs-on: ubuntu-latest
-    
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'
-    
-    - name: Install linters
-      run: |
-        pip install flake8 black isort
-    
-    - name: Run flake8
-      run: flake8 apps/ --max-line-length=120
-    
-    - name: Check black formatting
-      run: black --check apps/
-    
-    - name: Check import sorting
-      run: isort --check-only apps/
-```
+- [ ] All endpoints match the frontend interface methods in `src/services/api/interfaces.ts`
+- [ ] Response field names use snake_case (frontend client handles camelCase conversion)
+- [ ] Paginated endpoints return `results` array (not `data`)
+- [ ] Authentication endpoints return `access` and `refresh` tokens
+- [ ] Cities endpoint returns simple array (not paginated)
+- [ ] Error responses include `error` key with message
+- [ ] UUIDs are used for all primary keys
+- [ ] ISO8601 datetime format for all timestamps
+- [ ] Booking `ticket_code` follows `NB-XXXXXXXX` format
+- [ ] CORS allows frontend origin
 
 ---
 
-## Production Deployment Notes
+## Production Deployment
 
-### Database Options for Production
-
-SQLite is ideal for development and testing. For production, consider:
-
-**Option 1: PostgreSQL (Recommended)**
-```bash
-pip install psycopg2-binary
-```
+### Database Migration to PostgreSQL
 
 ```python
 # settings.py
@@ -2930,59 +2671,6 @@ DATABASES = {
 }
 ```
 
-**Option 2: MySQL**
-```bash
-pip install mysqlclient
-```
-
-```python
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': os.getenv('DB_NAME'),
-        'USER': os.getenv('DB_USER'),
-        'PASSWORD': os.getenv('DB_PASSWORD'),
-        'HOST': os.getenv('DB_HOST', 'localhost'),
-        'PORT': os.getenv('DB_PORT', '3306'),
-    }
-}
-```
-
-### WSGI Server Setup
-
-```bash
-# Install gunicorn
-pip install gunicorn
-
-# Run with gunicorn
-gunicorn bus_booking.wsgi:application --bind 0.0.0.0:8000 --workers 4
-```
-
-### Nginx Configuration
-
-```nginx
-server {
-    listen 80;
-    server_name your-domain.com;
-
-    location /static/ {
-        alias /path/to/project/staticfiles/;
-    }
-
-    location /media/ {
-        alias /path/to/project/media/;
-    }
-
-    location / {
-        proxy_pass http://127.0.0.1:8000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
-```
-
 ### Security Checklist
 
 - [ ] Set `DEBUG=False`
@@ -2991,47 +2679,7 @@ server {
 - [ ] Set up HTTPS with SSL certificate
 - [ ] Configure proper CORS origins
 - [ ] Run `python manage.py check --deploy`
-- [ ] Collect static files: `python manage.py collectstatic`
-- [ ] Set up database backups
-- [ ] Configure logging and monitoring
-- [ ] Set up rate limiting
-
-### Deployment Commands
-
-```bash
-# Collect static files
-python manage.py collectstatic --noinput
-
-# Run migrations
-python manage.py migrate --noinput
-
-# Create superuser
-python manage.py createsuperuser
-
-# Security check
-python manage.py check --deploy
-```
 
 ---
 
-## Frontend Integration Notes
-
-1. **JWT Tokens**: Store JWT tokens securely and include them in API requests via the `Authorization: Bearer <token>` header.
-
-2. **Pagination**: All list endpoints support pagination with `page` and `page_size` query parameters. Response includes `count`, `current_page`, `total_pages`, `next`, `previous`, and `results`.
-
-3. **Search/Filter**: Most list endpoints support search and filter query parameters (e.g., `?search=lagos`, `?company_id=xxx`).
-
-4. **Seat Selection**: The `/api/v1/trips/{id}/seats/` endpoint returns paginated seats for the booking page.
-
-5. **Multi-Passenger Booking**: The booking creation endpoint accepts multiple passengers linked to individual seats.
-
-6. **Role-Based Access**: Three roles are supported - `admin`, `company_admin`, and `passenger`.
-
-7. **API Response Format**: All responses use snake_case. Frontend mappers should convert to camelCase as needed.
-
-8. **Error Handling**: Errors return JSON with `error` key and appropriate HTTP status codes.
-
----
-
-This structure mirrors the current Lovable Cloud schema and provides a complete reference for Django backend integration. The SQLite configuration enables quick local development while maintaining easy migration paths to production databases.
+This documentation ensures the Django backend aligns perfectly with the React frontend's API abstraction layer, enabling seamless integration when switching from Supabase to Django.
