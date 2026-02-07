@@ -23,6 +23,8 @@ import type {
   UpdateBookingDto,
   UpdateTripDto,
   TripSearchParams,
+  PaystackInitResult,
+  PaystackVerifyResult,
 } from './types';
 
 // Authentication Service Interface
@@ -42,6 +44,10 @@ export interface IAuthService {
   
   // Email verification
   resendVerificationEmail(email: string): Promise<{ error?: Error }>;
+
+  // OTP verification (Django-specific, optional)
+  verifyOtp?(email: string, code: string): Promise<ApiAuthResult>;
+  resendOtp?(email: string): Promise<{ error?: Error }>;
 }
 
 // Cities Service Interface
@@ -118,6 +124,12 @@ export interface IFunctionsService {
   invoke<T = any>(functionName: string, body?: any): Promise<{ data?: T; error?: Error }>;
 }
 
+// Payment Service Interface (Paystack - Django-specific)
+export interface IPaymentService {
+  initializePayment(bookingId: string, email: string, amount: number): Promise<PaystackInitResult>;
+  verifyPayment(reference: string): Promise<PaystackVerifyResult>;
+}
+
 // Main API Service Interface - Aggregates all services
 export interface IApiService {
   auth: IAuthService;
@@ -130,4 +142,5 @@ export interface IApiService {
   profiles: IProfilesService;
   userRoles: IUserRolesService;
   functions: IFunctionsService;
+  payments?: IPaymentService;
 }

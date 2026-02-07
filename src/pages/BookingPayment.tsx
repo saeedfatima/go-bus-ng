@@ -9,6 +9,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { ArrowLeft, Clock, MapPin, Users, CheckCircle, AlertTriangle, Loader2, CreditCard } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, differenceInSeconds } from 'date-fns';
+import { usePaystack } from '@/hooks/usePaystack';
 
 const BookingPayment = () => {
   const { id } = useParams();
@@ -17,6 +18,7 @@ const BookingPayment = () => {
   const queryClient = useQueryClient();
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const { isPaystackAvailable, initializePayment, verifyPayment, isInitializing } = usePaystack();
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -80,12 +82,57 @@ const BookingPayment = () => {
     }
   }, [timeLeft, booking?.status, navigate]);
 
+  // Handle Paystack callback (redirect back from Paystack)
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const reference = urlParams.get('reference') || urlParams.get('trxref');
+    
+    if (reference && isPaystackAvailable) {
+      const handlePaystackCallback = async () => {
+        setIsProcessing(true);
+        const result = await verifyPayment(reference);
+        if (result && result.status === 'success') {
+          await supabase
+            .from('bookings')
+            .update({
+              status: 'confirmed',
+              payment_completed_at: new Date().toISOString(),
+            })
+            .eq('id', id);
+
+          queryClient.invalidateQueries({ queryKey: ['booking-payment', id] });
+          queryClient.invalidateQueries({ queryKey: ['my-bookings'] });
+          toast.success('Payment successful! Your booking is confirmed.');
+          navigate(`/booking/${id}/confirmation`, { replace: true });
+        } else {
+          toast.error('Payment verification failed. Please contact support.');
+          setIsProcessing(false);
+        }
+      };
+      handlePaystackCallback();
+    }
+  }, []);
+
   const confirmPayment = useMutation({
     mutationFn: async () => {
-      // Mock payment - in production, integrate with Paystack/Flutterwave
       setIsProcessing(true);
-      
-      // Simulate payment processing
+
+      // Paystack flow for Django backend
+      if (isPaystackAvailable && booking) {
+        const result = await initializePayment(
+          booking.id,
+          booking.passenger_email,
+          booking.total_amount
+        );
+        if (result) {
+          // Redirect to Paystack checkout
+          window.location.href = result.authorizationUrl;
+          return false; // Don't proceed — page will redirect
+        }
+        throw new Error('Failed to initialize Paystack payment');
+      }
+
+      // Mock payment for Supabase backend
       await new Promise(resolve => setTimeout(resolve, 2000));
 
       const { error } = await supabase
@@ -99,7 +146,8 @@ const BookingPayment = () => {
       if (error) throw error;
       return true;
     },
-    onSuccess: () => {
+    onSuccess: (shouldNavigate) => {
+      if (shouldNavigate === false) return; // Paystack redirect in progress
       queryClient.invalidateQueries({ queryKey: ['booking-payment', id] });
       queryClient.invalidateQueries({ queryKey: ['my-bookings'] });
       toast.success('Payment successful! Your booking is confirmed.');
@@ -332,7 +380,9 @@ const BookingPayment = () => {
 
             <div className="p-4 bg-muted/30 rounded-lg mb-6">
               <p className="text-sm text-muted-foreground text-center">
-                🔒 This is a mock payment for testing. In production, this will integrate with Paystack.
+                {isPaystackAvailable
+                  ? '🔒 Secure payment powered by Paystack'
+                  : '🔒 This is a mock payment for testing. In production, this will integrate with Paystack.'}
               </p>
             </div>
 
@@ -355,12 +405,12 @@ const BookingPayment = () => {
               <Button
                 className="flex-1"
                 onClick={() => confirmPayment.mutate()}
-                disabled={confirmPayment.isPending || isProcessing}
+                disabled={confirmPayment.isPending || isProcessing || isInitializing}
               >
-                {isProcessing ? (
+                {isProcessing || isInitializing ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Processing...
+                    {isInitializing ? 'Connecting to Paystack...' : 'Processing...'}
                   </>
                 ) : (
                   <>

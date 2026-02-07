@@ -8,6 +8,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
+import { currentBackend, api } from '@/services/api';
+import OtpVerification from '@/components/auth/OtpVerification';
 import { z } from 'zod';
 
 const registerSchema = z.object({
@@ -23,6 +25,7 @@ const CompanyRegister = () => {
   const [isLogin, setIsLogin] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [showOtpVerification, setShowOtpVerification] = useState(false);
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -34,7 +37,9 @@ const CompanyRegister = () => {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const { signIn, signUp, user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
-  
+
+  const isDjango = currentBackend === 'django';
+
   // Check if user is already logged in and has a company
   useEffect(() => {
     if (authLoading) return;
@@ -65,7 +70,9 @@ const CompanyRegister = () => {
       if (isLogin) {
         const { error } = await signIn(formData.email, formData.password);
         if (error) {
-          if (error.message.includes('Invalid login credentials')) {
+          if (isDjango && error.message === 'OTP_REQUIRED') {
+            setShowOtpVerification(true);
+          } else if (error.message.includes('Invalid login credentials')) {
             toast.error('Invalid email or password');
           } else {
             toast.error(error.message);
@@ -108,10 +115,17 @@ const CompanyRegister = () => {
           return;
         }
 
-        // Wait a moment for the auth to complete
+        // Django backend: show OTP verification
+        if (isDjango) {
+          setShowOtpVerification(true);
+          toast.success('Account created! Please verify with the OTP sent to your email.');
+          setLoading(false);
+          return;
+        }
+
+        // Supabase flow: wait for auth then create company
         await new Promise(resolve => setTimeout(resolve, 1000));
 
-        // Get the current user
         const { data: { user } } = await supabase.auth.getUser();
         
         if (!user) {
@@ -151,6 +165,41 @@ const CompanyRegister = () => {
     setLoading(false);
   };
 
+  const handleOtpVerify = async (code: string) => {
+    if (isDjango && api.auth.verifyOtp) {
+      const result = await api.auth.verifyOtp(formData.email, code);
+      if (result.error) return { error: result.error };
+
+      // After OTP verification, create company via Django API
+      if (!isLogin && result.user) {
+        try {
+          await api.companies.create(
+            { name: formData.companyName, description: formData.companyDescription },
+            result.user.id
+          );
+          await api.userRoles.addRole(result.user.id, 'company_admin');
+        } catch (err: any) {
+          return { error: new Error('Company creation failed: ' + err.message) };
+        }
+      }
+
+      return {};
+    }
+    return { error: new Error('OTP verification not available') };
+  };
+
+  const handleOtpResend = async () => {
+    if (isDjango && api.auth.resendOtp) {
+      return api.auth.resendOtp(formData.email);
+    }
+    return { error: new Error('OTP resend not available') };
+  };
+
+  const handleOtpSuccess = () => {
+    toast.success(isLogin ? 'Email verified!' : 'Company registered successfully!');
+    navigate('/company/dashboard');
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-gradient-hero">
       <main className="flex-1 flex items-center justify-center py-12 px-4">
@@ -167,147 +216,160 @@ const CompanyRegister = () => {
 
           {/* Card */}
           <div className="bg-card rounded-2xl border border-border shadow-xl p-8">
-            <div className="text-center mb-6">
-              <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-primary/10 mb-4">
-                <Building2 className="h-6 w-6 text-primary" />
-              </div>
-              <h1 className="font-display text-2xl font-bold text-foreground mb-2">
-                {isLogin ? 'Company Login' : 'Register Your Company'}
-              </h1>
-              <p className="text-muted-foreground">
-                {isLogin
-                  ? 'Access your company dashboard'
-                  : 'Partner with us to reach more customers'}
-              </p>
-            </div>
+            {showOtpVerification ? (
+              <OtpVerification
+                email={formData.email}
+                onVerify={handleOtpVerify}
+                onResend={handleOtpResend}
+                onSuccess={handleOtpSuccess}
+                title="Verify Your Email"
+                description={isLogin ? undefined : 'Verify your email to complete company registration'}
+              />
+            ) : (
+              <>
+                <div className="text-center mb-6">
+                  <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-primary/10 mb-4">
+                    <Building2 className="h-6 w-6 text-primary" />
+                  </div>
+                  <h1 className="font-display text-2xl font-bold text-foreground mb-2">
+                    {isLogin ? 'Company Login' : 'Register Your Company'}
+                  </h1>
+                  <p className="text-muted-foreground">
+                    {isLogin
+                      ? 'Access your company dashboard'
+                      : 'Partner with us to reach more customers'}
+                  </p>
+                </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
-              {!isLogin && (
-                <>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                  {!isLogin && (
+                    <>
+                      <div className="space-y-2">
+                        <Label htmlFor="companyName">Company Name</Label>
+                        <div className="relative">
+                          <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                          <Input
+                            id="companyName"
+                            type="text"
+                            placeholder="ABC Transport Ltd"
+                            className="pl-10"
+                            value={formData.companyName}
+                            onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
+                            required
+                          />
+                        </div>
+                        {errors.companyName && <p className="text-sm text-destructive">{errors.companyName}</p>}
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="companyDescription">Company Description</Label>
+                        <Textarea
+                          id="companyDescription"
+                          placeholder="Tell us about your transport company..."
+                          className="min-h-[80px]"
+                          value={formData.companyDescription}
+                          onChange={(e) => setFormData({ ...formData, companyDescription: e.target.value })}
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="fullName">Your Name</Label>
+                          <div className="relative">
+                            <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                            <Input
+                              id="fullName"
+                              type="text"
+                              placeholder="John Doe"
+                              className="pl-10"
+                              value={formData.fullName}
+                              onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
+                              required
+                            />
+                          </div>
+                          {errors.fullName && <p className="text-sm text-destructive">{errors.fullName}</p>}
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="phone">Phone</Label>
+                          <div className="relative">
+                            <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                            <Input
+                              id="phone"
+                              type="tel"
+                              placeholder="080..."
+                              className="pl-10"
+                              value={formData.phone}
+                              onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                              required
+                            />
+                          </div>
+                          {errors.phone && <p className="text-sm text-destructive">{errors.phone}</p>}
+                        </div>
+                      </div>
+                    </>
+                  )}
+
                   <div className="space-y-2">
-                    <Label htmlFor="companyName">Company Name</Label>
+                    <Label htmlFor="email">Email Address</Label>
                     <div className="relative">
-                      <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                       <Input
-                        id="companyName"
-                        type="text"
-                        placeholder="ABC Transport Ltd"
+                        id="email"
+                        type="email"
+                        placeholder="company@example.com"
                         className="pl-10"
-                        value={formData.companyName}
-                        onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
+                        value={formData.email}
+                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                         required
                       />
                     </div>
-                    {errors.companyName && <p className="text-sm text-destructive">{errors.companyName}</p>}
+                    {errors.email && <p className="text-sm text-destructive">{errors.email}</p>}
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="companyDescription">Company Description</Label>
-                    <Textarea
-                      id="companyDescription"
-                      placeholder="Tell us about your transport company..."
-                      className="min-h-[80px]"
-                      value={formData.companyDescription}
-                      onChange={(e) => setFormData({ ...formData, companyDescription: e.target.value })}
-                    />
+                    <Label htmlFor="password">Password</Label>
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        id="password"
+                        type={showPassword ? 'text' : 'password'}
+                        placeholder="••••••••"
+                        className="pl-10 pr-10"
+                        value={formData.password}
+                        onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                        required
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      >
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                    {errors.password && <p className="text-sm text-destructive">{errors.password}</p>}
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="fullName">Your Name</Label>
-                      <div className="relative">
-                        <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <Input
-                          id="fullName"
-                          type="text"
-                          placeholder="John Doe"
-                          className="pl-10"
-                          value={formData.fullName}
-                          onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
-                          required
-                        />
-                      </div>
-                      {errors.fullName && <p className="text-sm text-destructive">{errors.fullName}</p>}
-                    </div>
+                  <Button type="submit" size="lg" className="w-full" disabled={loading}>
+                    {loading ? 'Please wait...' : isLogin ? 'Sign In' : 'Register Company'}
+                  </Button>
+                </form>
 
-                    <div className="space-y-2">
-                      <Label htmlFor="phone">Phone</Label>
-                      <div className="relative">
-                        <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <Input
-                          id="phone"
-                          type="tel"
-                          placeholder="080..."
-                          className="pl-10"
-                          value={formData.phone}
-                          onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                          required
-                        />
-                      </div>
-                      {errors.phone && <p className="text-sm text-destructive">{errors.phone}</p>}
-                    </div>
-                  </div>
-                </>
-              )}
-
-              <div className="space-y-2">
-                <Label htmlFor="email">Email Address</Label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="company@example.com"
-                    className="pl-10"
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    required
-                  />
+                <div className="mt-6 text-center">
+                  <p className="text-muted-foreground">
+                    {isLogin ? "Don't have a company account?" : 'Already registered?'}{' '}
+                    <button
+                      type="button"
+                      onClick={() => setIsLogin(!isLogin)}
+                      className="text-primary font-medium hover:underline"
+                    >
+                      {isLogin ? 'Register' : 'Sign in'}
+                    </button>
+                  </p>
                 </div>
-                {errors.email && <p className="text-sm text-destructive">{errors.email}</p>}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    id="password"
-                    type={showPassword ? 'text' : 'password'}
-                    placeholder="••••••••"
-                    className="pl-10 pr-10"
-                    value={formData.password}
-                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    required
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                  >
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
-                {errors.password && <p className="text-sm text-destructive">{errors.password}</p>}
-              </div>
-
-              <Button type="submit" size="lg" className="w-full" disabled={loading}>
-                {loading ? 'Please wait...' : isLogin ? 'Sign In' : 'Register Company'}
-              </Button>
-            </form>
-
-            <div className="mt-6 text-center">
-              <p className="text-muted-foreground">
-                {isLogin ? "Don't have a company account?" : 'Already registered?'}{' '}
-                <button
-                  type="button"
-                  onClick={() => setIsLogin(!isLogin)}
-                  className="text-primary font-medium hover:underline"
-                >
-                  {isLogin ? 'Register' : 'Sign in'}
-                </button>
-              </p>
-            </div>
+              </>
+            )}
           </div>
 
           <p className="text-center text-sm text-muted-foreground mt-6">
