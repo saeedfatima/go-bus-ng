@@ -212,3 +212,24 @@ export interface TripSearchParams {
   departureDate?: string;
   passengers?: number;
 }
+
+// OTP Verification
+export interface OtpVerifyResult {
+  verified: boolean;
+  session?: ApiSession;
+  error?: Error;
+}
+
+// Paystack Payment
+export interface PaystackInitResult {
+  authorizationUrl: string;
+  accessCode: string;
+  reference: string;
+}
+
+export interface PaystackVerifyResult {
+  status: string;
+  reference: string;
+  amount: number;
+  paidAt?: string;
+}

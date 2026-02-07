@@ -2682,4 +2682,821 @@ DATABASES = {
 
 ---
 
+## OTP Verification System
+
+### OTP Model
+
+```python
+# apps/accounts/models.py
+
+class OtpCode(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    email = models.EmailField()
+    code = models.CharField(max_length=6)
+    is_used = models.BooleanField(default=False)
+    expires_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['email', 'code']),
+        ]
+
+    def is_expired(self):
+        return timezone.now() > self.expires_at
+```
+
+### OTP Utility
+
+```python
+# apps/accounts/utils.py
+
+import random
+import string
+from datetime import timedelta
+from django.utils import timezone
+from django.core.mail import send_mail
+from django.conf import settings
+from .models import OtpCode
+
+
+def generate_otp_code():
+    """Generate a 6-digit numeric OTP code."""
+    return ''.join(random.choices(string.digits, k=6))
+
+
+def send_otp(email):
+    """Generate and send OTP code to email."""
+    # Invalidate previous unused OTPs for this email
+    OtpCode.objects.filter(email=email, is_used=False).update(is_used=True)
+
+    code = generate_otp_code()
+    expires_at = timezone.now() + timedelta(minutes=10)
+
+    otp = OtpCode.objects.create(
+        email=email,
+        code=code,
+        expires_at=expires_at,
+    )
+
+    # Send email
+    send_mail(
+        subject='NaijaBus - Verify Your Email',
+        message=f'Your verification code is: {code}\n\nThis code expires in 10 minutes.',
+        html_message=f'''
+        <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 20px;">
+            <h2 style="color: #16a34a;">NaijaBus Email Verification</h2>
+            <p>Your verification code is:</p>
+            <div style="font-size: 32px; font-weight: bold; letter-spacing: 8px; text-align: center;
+                        padding: 20px; background: #f0fdf4; border-radius: 8px; margin: 20px 0;">
+                {code}
+            </div>
+            <p style="color: #666;">This code expires in 10 minutes.</p>
+            <p style="color: #666;">If you didn't request this code, please ignore this email.</p>
+        </div>
+        ''',
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        recipient_list=[email],
+        fail_silently=False,
+    )
+
+    return otp
+
+
+def verify_otp(email, code):
+    """Verify an OTP code. Returns True if valid, False otherwise."""
+    try:
+        otp = OtpCode.objects.filter(
+            email=email,
+            code=code,
+            is_used=False,
+        ).latest('created_at')
+    except OtpCode.DoesNotExist:
+        return False
+
+    if otp.is_expired():
+        return False
+
+    otp.is_used = True
+    otp.save()
+    return True
+```
+
+### OTP Views
+
+```python
+# apps/accounts/views.py
+
+from rest_framework.decorators import api_view, permission_classes, throttle_classes
+from rest_framework.permissions import AllowAny
+from rest_framework.response import Response
+from rest_framework import status
+from rest_framework.throttling import AnonRateThrottle
+from rest_framework_simplejwt.tokens import RefreshToken
+from django.contrib.auth import get_user_model
+from .utils import send_otp, verify_otp
+
+User = get_user_model()
+
+
+class OtpRateThrottle(AnonRateThrottle):
+    rate = '5/min'
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def register(request):
+    """Register a new user. Sends OTP for email verification."""
+    email = request.data.get('email')
+    password = request.data.get('password')
+    full_name = request.data.get('full_name', '')
+    phone = request.data.get('phone', '')
+
+    if not email or not password:
+        return Response(
+            {'error': 'Email and password are required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    if User.objects.filter(email=email).exists():
+        return Response(
+            {'error': 'An account with this email already exists'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # Create inactive user
+    user = User.objects.create_user(
+        username=email,
+        email=email,
+        password=password,
+        first_name=full_name,
+        is_active=False,
+    )
+
+    # Store phone in profile
+    from apps.profiles.models import Profile
+    Profile.objects.create(user=user, full_name=full_name, phone=phone)
+
+    # Add passenger role by default
+    from apps.accounts.models import UserRole
+    UserRole.objects.create(user=user, role='passenger')
+
+    # Send OTP
+    send_otp(email)
+
+    return Response({
+        'otp_required': True,
+        'message': 'Registration successful. Please verify your email with the OTP sent.'
+    }, status=status.HTTP_201_CREATED)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def verify_otp_view(request):
+    """Verify OTP code and activate user account."""
+    email = request.data.get('email')
+    otp_code = request.data.get('otp_code')
+
+    if not email or not otp_code:
+        return Response(
+            {'error': 'Email and OTP code are required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    if not verify_otp(email, otp_code):
+        return Response(
+            {'error': 'Invalid or expired OTP code'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    try:
+        user = User.objects.get(email=email)
+    except User.DoesNotExist:
+        return Response(
+            {'error': 'User not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    # Activate user
+    user.is_active = True
+    user.save()
+
+    # Generate JWT tokens
+    refresh = RefreshToken.for_user(user)
+
+    return Response({
+        'access': str(refresh.access_token),
+        'refresh': str(refresh),
+        'user': {
+            'id': str(user.id),
+            'email': user.email,
+            'full_name': user.first_name,
+        }
+    })
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+@throttle_classes([OtpRateThrottle])
+def resend_otp(request):
+    """Resend OTP code. Rate limited to 5 per minute."""
+    email = request.data.get('email')
+
+    if not email:
+        return Response(
+            {'error': 'Email is required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    if not User.objects.filter(email=email).exists():
+        return Response(
+            {'error': 'No account found with this email'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    send_otp(email)
+
+    return Response({'message': 'OTP sent successfully'})
+```
+
+### OTP URL Configuration
+
+```python
+# apps/accounts/urls.py
+
+from django.urls import path
+from . import views
+
+urlpatterns = [
+    path('register/', views.register, name='register'),
+    path('login/', views.login_view, name='login'),
+    path('logout/', views.logout_view, name='logout'),
+    path('verify-otp/', views.verify_otp_view, name='verify-otp'),
+    path('resend-otp/', views.resend_otp, name='resend-otp'),
+    path('me/', views.me, name='me'),
+    path('password-reset/', views.password_reset, name='password-reset'),
+    path('password-change/', views.password_change, name='password-change'),
+    path('resend-verification/', views.resend_otp, name='resend-verification'),
+]
+```
+
+### OTP Expiry Management Command
+
+```python
+# apps/accounts/management/commands/cleanup_expired_otps.py
+
+from django.core.management.base import BaseCommand
+from django.utils import timezone
+from apps.accounts.models import OtpCode
+
+
+class Command(BaseCommand):
+    help = 'Remove expired OTP codes'
+
+    def handle(self, *args, **options):
+        count, _ = OtpCode.objects.filter(
+            expires_at__lt=timezone.now()
+        ).delete()
+        self.stdout.write(
+            self.style.SUCCESS(f'Removed {count} expired OTP codes')
+        )
+```
+
+---
+
+## E-Ticket Email System
+
+### Email Utility
+
+```python
+# apps/bookings/email.py
+
+from django.core.mail import EmailMultiAlternatives
+from django.template.loader import render_to_string
+from django.conf import settings
+from .models import Booking
+
+
+def send_booking_email(booking_id):
+    """Send booking confirmation email with e-ticket."""
+    try:
+        booking = Booking.objects.select_related(
+            'trip__route__origin_city',
+            'trip__route__destination_city',
+            'trip__bus__company',
+        ).prefetch_related('passengers').get(id=booking_id)
+    except Booking.DoesNotExist:
+        raise ValueError(f'Booking {booking_id} not found')
+
+    context = {
+        'booking': booking,
+        'ticket_code': booking.ticket_code,
+        'passenger_name': booking.passenger_name,
+        'origin': booking.trip.route.origin_city.name,
+        'destination': booking.trip.route.destination_city.name,
+        'departure_time': booking.trip.departure_time,
+        'arrival_time': booking.trip.arrival_time,
+        'company_name': booking.trip.bus.company.name,
+        'bus_type': booking.trip.bus.bus_type,
+        'seats': ', '.join(booking.seats),
+        'total_amount': booking.total_amount,
+        'passengers': list(booking.passengers.all()),
+        'passenger_count': booking.passengers.count(),
+    }
+
+    # Plain text version
+    text_content = f"""
+NaijaBus - Booking Confirmation
+
+Ticket Code: {booking.ticket_code}
+Passenger: {booking.passenger_name}
+Route: {context['origin']} → {context['destination']}
+Company: {context['company_name']}
+Departure: {booking.trip.departure_time}
+Seats: {context['seats']}
+Total: ₦{booking.total_amount:,.2f}
+
+Thank you for choosing NaijaBus!
+"""
+
+    # HTML version
+    html_content = render_to_string('emails/booking_confirmation.html', context)
+
+    email = EmailMultiAlternatives(
+        subject=f'NaijaBus - Booking Confirmed ({booking.ticket_code})',
+        body=text_content,
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        to=[booking.passenger_email],
+    )
+    email.attach_alternative(html_content, 'text/html')
+    email.send(fail_silently=False)
+
+    return True
+```
+
+### E-Ticket Email Template
+
+```html
+<!-- templates/emails/booking_confirmation.html -->
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f4f4f5;">
+    <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+        <!-- Header -->
+        <div style="background: linear-gradient(135deg, #16a34a, #15803d); padding: 30px; border-radius: 16px 16px 0 0; text-align: center;">
+            <h1 style="color: white; margin: 0; font-size: 24px;">🚌 NaijaBus</h1>
+            <p style="color: #bbf7d0; margin: 8px 0 0;">Booking Confirmed</p>
+        </div>
+
+        <!-- Ticket Card -->
+        <div style="background: white; padding: 30px; border-radius: 0 0 16px 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+            <!-- Ticket Code -->
+            <div style="text-align: center; padding: 20px; background: #f0fdf4; border-radius: 12px; margin-bottom: 24px;">
+                <p style="margin: 0; color: #666; font-size: 12px; text-transform: uppercase; letter-spacing: 1px;">Ticket Code</p>
+                <p style="margin: 8px 0 0; font-size: 28px; font-weight: bold; color: #16a34a; letter-spacing: 3px;">{{ ticket_code }}</p>
+            </div>
+
+            <!-- Route -->
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+                <div>
+                    <p style="margin: 0; color: #666; font-size: 12px;">FROM</p>
+                    <p style="margin: 4px 0 0; font-weight: bold; font-size: 18px;">{{ origin }}</p>
+                </div>
+                <div style="font-size: 24px;">→</div>
+                <div style="text-align: right;">
+                    <p style="margin: 0; color: #666; font-size: 12px;">TO</p>
+                    <p style="margin: 4px 0 0; font-weight: bold; font-size: 18px;">{{ destination }}</p>
+                </div>
+            </div>
+
+            <!-- Details Grid -->
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
+                <tr>
+                    <td style="padding: 12px 0; border-bottom: 1px solid #e4e4e7;">
+                        <span style="color: #666; font-size: 12px;">COMPANY</span><br>
+                        <strong>{{ company_name }}</strong>
+                    </td>
+                    <td style="padding: 12px 0; border-bottom: 1px solid #e4e4e7; text-align: right;">
+                        <span style="color: #666; font-size: 12px;">BUS TYPE</span><br>
+                        <strong style="text-transform: capitalize;">{{ bus_type }}</strong>
+                    </td>
+                </tr>
+                <tr>
+                    <td style="padding: 12px 0; border-bottom: 1px solid #e4e4e7;">
+                        <span style="color: #666; font-size: 12px;">DEPARTURE</span><br>
+                        <strong>{{ departure_time|date:"M d, Y" }} at {{ departure_time|time:"g:i A" }}</strong>
+                    </td>
+                    <td style="padding: 12px 0; border-bottom: 1px solid #e4e4e7; text-align: right;">
+                        <span style="color: #666; font-size: 12px;">SEATS</span><br>
+                        <strong>{{ seats }}</strong>
+                    </td>
+                </tr>
+                <tr>
+                    <td style="padding: 12px 0;">
+                        <span style="color: #666; font-size: 12px;">PASSENGERS</span><br>
+                        <strong>{{ passenger_count }}</strong>
+                    </td>
+                    <td style="padding: 12px 0; text-align: right;">
+                        <span style="color: #666; font-size: 12px;">TOTAL PAID</span><br>
+                        <strong style="color: #16a34a; font-size: 18px;">₦{{ total_amount|floatformat:0 }}</strong>
+                    </td>
+                </tr>
+            </table>
+
+            <!-- Passengers List -->
+            {% if passengers %}
+            <div style="background: #fafafa; padding: 16px; border-radius: 8px; margin-bottom: 24px;">
+                <p style="margin: 0 0 12px; font-weight: bold; font-size: 14px;">Passengers:</p>
+                {% for passenger in passengers %}
+                <div style="padding: 8px 0; {% if not forloop.last %}border-bottom: 1px solid #e4e4e7;{% endif %}">
+                    <span style="display: inline-block; background: #16a34a; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px; margin-right: 8px;">{{ passenger.seat_number }}</span>
+                    <strong>{{ passenger.full_name }}</strong>
+                    <span style="color: #666; font-size: 12px; margin-left: 8px;">{{ passenger.phone }}</span>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            <!-- Footer -->
+            <div style="text-align: center; padding-top: 20px; border-top: 2px dashed #e4e4e7;">
+                <p style="color: #666; font-size: 12px; margin: 0;">
+                    Present this ticket code at the terminal for boarding.<br>
+                    For support, contact: support@naijab.us
+                </p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
+```
+
+### E-Ticket Email View
+
+```python
+# apps/bookings/views.py (add to existing views)
+
+@api_view(['POST'])
+def send_booking_email_view(request):
+    """Send booking confirmation email with e-ticket."""
+    booking_id = request.data.get('booking_id')
+
+    if not booking_id:
+        return Response(
+            {'error': 'booking_id is required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    try:
+        from .email import send_booking_email
+        send_booking_email(booking_id)
+        return Response({'message': 'Booking email sent successfully'})
+    except ValueError as e:
+        return Response(
+            {'error': str(e)},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        return Response(
+            {'error': f'Failed to send email: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+```
+
+---
+
+## Paystack Payment Gateway
+
+### Payment Model
+
+```python
+# apps/bookings/models.py (add to existing models)
+
+class Payment(models.Model):
+    PAYMENT_STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('success', 'Success'),
+        ('failed', 'Failed'),
+        ('abandoned', 'Abandoned'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    booking = models.ForeignKey('Booking', on_delete=models.CASCADE, related_name='payments')
+    reference = models.CharField(max_length=100, unique=True)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    status = models.CharField(max_length=20, choices=PAYMENT_STATUS_CHOICES, default='pending')
+    paystack_response = models.JSONField(null=True, blank=True)
+    paid_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.reference} - {self.status}'
+```
+
+### Paystack Service
+
+```python
+# apps/bookings/paystack.py
+
+import requests
+import uuid
+from django.conf import settings
+
+
+class PaystackService:
+    BASE_URL = 'https://api.paystack.co'
+
+    def __init__(self):
+        self.secret_key = settings.PAYSTACK_SECRET_KEY
+        self.headers = {
+            'Authorization': f'Bearer {self.secret_key}',
+            'Content-Type': 'application/json',
+        }
+
+    def initialize_transaction(self, email, amount, booking_id, callback_url=None):
+        """
+        Initialize a Paystack transaction.
+        Amount should be in Naira (will be converted to kobo).
+        """
+        reference = f'NB-PAY-{uuid.uuid4().hex[:12].upper()}'
+
+        payload = {
+            'email': email,
+            'amount': int(amount * 100),  # Convert to kobo
+            'reference': reference,
+            'callback_url': callback_url or settings.PAYSTACK_CALLBACK_URL,
+            'metadata': {
+                'booking_id': str(booking_id),
+            }
+        }
+
+        response = requests.post(
+            f'{self.BASE_URL}/transaction/initialize',
+            json=payload,
+            headers=self.headers,
+        )
+
+        data = response.json()
+
+        if not data.get('status'):
+            raise Exception(data.get('message', 'Failed to initialize transaction'))
+
+        return {
+            'authorization_url': data['data']['authorization_url'],
+            'access_code': data['data']['access_code'],
+            'reference': data['data']['reference'],
+        }
+
+    def verify_transaction(self, reference):
+        """Verify a Paystack transaction by reference."""
+        response = requests.get(
+            f'{self.BASE_URL}/transaction/verify/{reference}',
+            headers=self.headers,
+        )
+
+        data = response.json()
+
+        if not data.get('status'):
+            raise Exception(data.get('message', 'Failed to verify transaction'))
+
+        return {
+            'status': data['data']['status'],
+            'reference': data['data']['reference'],
+            'amount': data['data']['amount'] / 100,  # Convert from kobo to Naira
+            'paid_at': data['data'].get('paid_at'),
+            'channel': data['data'].get('channel'),
+            'metadata': data['data'].get('metadata', {}),
+        }
+```
+
+### Paystack Views
+
+```python
+# apps/bookings/views.py (add to existing views)
+
+import hashlib
+import hmac
+from django.conf import settings
+
+
+@api_view(['POST'])
+def initialize_payment(request):
+    """Initialize Paystack payment for a booking."""
+    booking_id = request.data.get('booking_id')
+    email = request.data.get('email')
+    amount = request.data.get('amount')
+
+    if not all([booking_id, email, amount]):
+        return Response(
+            {'error': 'booking_id, email, and amount are required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    try:
+        booking = Booking.objects.get(id=booking_id, status='pending')
+    except Booking.DoesNotExist:
+        return Response(
+            {'error': 'Booking not found or not in pending status'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    from .paystack import PaystackService
+    paystack = PaystackService()
+
+    try:
+        result = paystack.initialize_transaction(
+            email=email,
+            amount=float(amount),
+            booking_id=booking_id,
+        )
+
+        # Create payment record
+        Payment.objects.create(
+            booking=booking,
+            reference=result['reference'],
+            amount=amount,
+            status='pending',
+        )
+
+        return Response(result)
+    except Exception as e:
+        return Response(
+            {'error': str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+def verify_payment(request):
+    """Verify Paystack payment and update booking status."""
+    reference = request.query_params.get('reference')
+
+    if not reference:
+        return Response(
+            {'error': 'reference is required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    from .paystack import PaystackService
+    paystack = PaystackService()
+
+    try:
+        result = paystack.verify_transaction(reference)
+
+        # Update payment record
+        try:
+            payment = Payment.objects.get(reference=reference)
+            payment.status = result['status']
+            payment.paystack_response = result
+            payment.paid_at = result.get('paid_at')
+            payment.save()
+
+            # If payment successful, confirm booking
+            if result['status'] == 'success':
+                booking = payment.booking
+                booking.status = 'confirmed'
+                booking.payment_completed_at = result.get('paid_at') or timezone.now()
+                booking.save()
+
+                # Send confirmation email
+                try:
+                    from .email import send_booking_email
+                    send_booking_email(str(booking.id))
+                except Exception:
+                    pass  # Email failure shouldn't break payment verification
+
+        except Payment.DoesNotExist:
+            pass
+
+        return Response(result)
+    except Exception as e:
+        return Response(
+            {'error': str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def paystack_webhook(request):
+    """Handle Paystack webhook callbacks."""
+    # Verify webhook signature
+    paystack_signature = request.headers.get('X-Paystack-Signature', '')
+    computed_signature = hmac.new(
+        settings.PAYSTACK_SECRET_KEY.encode('utf-8'),
+        request.body,
+        hashlib.sha512,
+    ).hexdigest()
+
+    if paystack_signature != computed_signature:
+        return Response(status=status.HTTP_400_BAD_REQUEST)
+
+    event = request.data.get('event')
+    data = request.data.get('data', {})
+
+    if event == 'charge.success':
+        reference = data.get('reference')
+
+        try:
+            payment = Payment.objects.get(reference=reference)
+            payment.status = 'success'
+            payment.paystack_response = data
+            payment.paid_at = data.get('paid_at')
+            payment.save()
+
+            # Confirm booking
+            booking = payment.booking
+            booking.status = 'confirmed'
+            booking.payment_completed_at = timezone.now()
+            booking.save()
+
+            # Send confirmation email
+            try:
+                from .email import send_booking_email
+                send_booking_email(str(booking.id))
+            except Exception:
+                pass
+
+        except Payment.DoesNotExist:
+            pass
+
+    return Response(status=status.HTTP_200_OK)
+```
+
+### Paystack URL Configuration
+
+```python
+# apps/bookings/urls.py (add to existing URLs)
+
+urlpatterns += [
+    path('payments/initialize/', views.initialize_payment, name='initialize-payment'),
+    path('payments/verify/', views.verify_payment, name='verify-payment'),
+    path('payments/webhook/', views.paystack_webhook, name='paystack-webhook'),
+]
+```
+
+### Paystack Settings
+
+```python
+# bus_booking/settings.py (add to existing settings)
+
+# Paystack Configuration
+PAYSTACK_SECRET_KEY = os.getenv('PAYSTACK_SECRET_KEY', '')
+PAYSTACK_PUBLIC_KEY = os.getenv('PAYSTACK_PUBLIC_KEY', '')
+PAYSTACK_CALLBACK_URL = os.getenv('PAYSTACK_CALLBACK_URL', 'http://localhost:5173/booking/{id}/payment')
+```
+
+---
+
+## Functions Endpoint (Generic Task Invocation)
+
+```python
+# apps/functions/views.py
+
+@api_view(['POST'])
+def invoke_function(request, function_name):
+    """Generic endpoint for invoking backend functions."""
+    handlers = {
+        'send-booking-email': handle_send_booking_email,
+    }
+
+    handler = handlers.get(function_name)
+    if not handler:
+        return Response(
+            {'error': f'Unknown function: {function_name}'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    return handler(request)
+
+
+def handle_send_booking_email(request):
+    booking_id = request.data.get('booking_id')
+    if not booking_id:
+        return Response(
+            {'error': 'booking_id is required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    try:
+        from apps.bookings.email import send_booking_email
+        send_booking_email(booking_id)
+        return Response({'message': 'Email sent successfully'})
+    except Exception as e:
+        return Response(
+            {'error': str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+```
+
+---
+
 This documentation ensures the Django backend aligns perfectly with the React frontend's API abstraction layer, enabling seamless integration when switching from Supabase to Django.

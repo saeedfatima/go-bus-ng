@@ -13,6 +13,7 @@ import type {
   IProfilesService,
   IUserRolesService,
   IFunctionsService,
+  IPaymentService,
 } from '../interfaces';
 import type {
   ApiSession,
@@ -36,6 +37,8 @@ import type {
   UpdateBookingDto,
   UpdateTripDto,
   TripSearchParams,
+  PaystackInitResult,
+  PaystackVerifyResult,
 } from '../types';
 
 // Configuration
@@ -130,6 +133,14 @@ class DjangoAuthService implements IAuthService {
         method: 'POST',
         body: JSON.stringify({ email, password, full_name: fullName, phone }),
       });
+
+      // Django returns otp_required flag — don't auto-login
+      if (data.otp_required) {
+        return {
+          user: { id: '', email, fullName, phone, createdAt: new Date().toISOString() },
+        };
+      }
+
       accessToken = data.access;
       refreshToken = data.refresh;
       const session = await this.getSession();
@@ -146,11 +157,48 @@ class DjangoAuthService implements IAuthService {
         method: 'POST',
         body: JSON.stringify({ email, password }),
       });
+
+      // If Django requires OTP verification before login
+      if (data.otp_required) {
+        return {
+          user: { id: '', email, fullName: data.full_name, createdAt: '' },
+          error: new Error('OTP_REQUIRED'),
+        };
+      }
+
       accessToken = data.access;
       refreshToken = data.refresh;
       const session = await this.getSession();
       this.notifyAuthChange('SIGNED_IN', session);
       return { user: session?.user, session: session || undefined };
+    } catch (error) {
+      return { error: error as Error };
+    }
+  }
+
+  async verifyOtp(email: string, code: string): Promise<ApiAuthResult> {
+    try {
+      const data = await apiCall<any>('/auth/verify-otp/', {
+        method: 'POST',
+        body: JSON.stringify({ email, otp_code: code }),
+      });
+      accessToken = data.access;
+      refreshToken = data.refresh;
+      const session = await this.getSession();
+      this.notifyAuthChange('SIGNED_IN', session);
+      return { user: session?.user, session: session || undefined };
+    } catch (error) {
+      return { error: error as Error };
+    }
+  }
+
+  async resendOtp(email: string): Promise<{ error?: Error }> {
+    try {
+      await apiCall('/auth/resend-otp/', {
+        method: 'POST',
+        body: JSON.stringify({ email }),
+      });
+      return {};
     } catch (error) {
       return { error: error as Error };
     }
@@ -684,6 +732,31 @@ class DjangoFunctionsService implements IFunctionsService {
   }
 }
 
+// Payment Service (Paystack)
+class DjangoPaymentService implements IPaymentService {
+  async initializePayment(bookingId: string, email: string, amount: number): Promise<PaystackInitResult> {
+    const data = await apiCall<any>('/payments/initialize/', {
+      method: 'POST',
+      body: JSON.stringify({ booking_id: bookingId, email, amount }),
+    });
+    return {
+      authorizationUrl: data.authorization_url,
+      accessCode: data.access_code,
+      reference: data.reference,
+    };
+  }
+
+  async verifyPayment(reference: string): Promise<PaystackVerifyResult> {
+    const data = await apiCall<any>(`/payments/verify/?reference=${reference}`);
+    return {
+      status: data.status,
+      reference: data.reference,
+      amount: data.amount,
+      paidAt: data.paid_at,
+    };
+  }
+}
+
 // Main Django API Service
 export class DjangoApiService implements IApiService {
   auth = new DjangoAuthService();
@@ -696,6 +769,7 @@ export class DjangoApiService implements IApiService {
   profiles = new DjangoProfilesService();
   userRoles = new DjangoUserRolesService();
   functions = new DjangoFunctionsService();
+  payments = new DjangoPaymentService();
 }
 
 export const djangoApiService = new DjangoApiService();
