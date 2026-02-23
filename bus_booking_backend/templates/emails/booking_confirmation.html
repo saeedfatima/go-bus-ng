@@ -1,0 +1,85 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Booking Confirmation</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        color: #333;
+        line-height: 1.6;
+      }
+      .container {
+        max-width: 600px;
+        margin: 0 auto;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        overflow: hidden;
+      }
+      .header {
+        background-color: #007bff;
+        color: #fff;
+        padding: 20px;
+        text-align: center;
+      }
+      .content {
+        padding: 20px;
+      }
+      .booking-details {
+        margin-top: 20px;
+        background-color: #f9f9f9;
+        padding: 15px;
+        border-radius: 5px;
+      }
+      .footer {
+        background-color: #f1f1f1;
+        padding: 10px;
+        text-align: center;
+        font-size: 12px;
+        color: #777;
+      }
+      .btn {
+        display: inline-block;
+        background-color: #28a745;
+        color: #fff;
+        padding: 10px 20px;
+        text-decoration: none;
+        border-radius: 5px;
+        margin-top: 20px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>Booking Confirmation</h1>
+      </div>
+      <div class="content">
+        <p>Dear {{ passenger_name }},</p>
+        <p>
+          Thank you for choosing NaijaBus! Your booking has been successfully
+          confirmed.
+        </p>
+
+        <div class="booking-details">
+          <h3>Ticket Details</h3>
+          <p><strong>Ticket Code:</strong> {{ ticket_code }}</p>
+          <p><strong>Route:</strong> {{ origin }} to {{ destination }}</p>
+          <p><strong>Date & Time:</strong> {{ departure_time }}</p>
+          <p><strong>Bus:</strong> {{ bus_company }} - {{ plate_number }}</p>
+          <p><strong>Seats:</strong> {{ seats }}</p>
+          <p><strong>Total Amount:</strong> ₦{{ total_amount }}</p>
+        </div>
+
+        <p>
+          Please arrive at the terminal at least 30 minutes before departure.
+        </p>
+        <br />
+        <p>Safe travels!</p>
+      </div>
+      <div class="footer">
+        <p>&copy; 2026 NaijaBus. All rights reserved.</p>
+      </div>
+    </div>
+  </body>
+</html>
