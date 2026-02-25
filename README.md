@@ -148,10 +148,6 @@ Payment Gateway API
 
 Email Service API
 
-🚀 Installation Guide
-1️⃣ Clone the Repository
-git clone https://github.com/yourusername/naijabus.git
-cd naijabus
 2️⃣ Install Dependencies
 
 Frontend:
