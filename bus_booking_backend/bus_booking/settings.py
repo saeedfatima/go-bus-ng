@@ -116,15 +116,14 @@ else:
     }
 
 # CORS - Allow frontend origins.
-# On Render: set CORS_ALLOW_ALL_ORIGINS=True in the backend environment variables.
-# Locally: all localhost ports plus the Render frontend are allowed by default.
-if os.getenv('CORS_ALLOW_ALL_ORIGINS', 'False') == 'True':
-    CORS_ALLOW_ALL_ORIGINS = True
-else:
+# Allow all origins by default. To restrict, set CORS_RESTRICT=True and CORS_ORIGINS env var on Render.
+if os.getenv('CORS_RESTRICT', 'False') == 'True':
     CORS_ALLOWED_ORIGINS = os.getenv(
         'CORS_ORIGINS',
         'http://localhost:3000,http://localhost:5173,http://localhost:8080,http://localhost:8081,https://go-bus-ng-frontend.onrender.com'
     ).split(',')
+else:
+    CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
 
 # Static files
