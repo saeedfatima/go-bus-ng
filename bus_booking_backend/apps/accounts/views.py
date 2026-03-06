@@ -4,6 +4,13 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.utils import timezone
+from django.utils.html import strip_tags
+from django.core.mail import send_mail
+from django.template.loader import render_to_string
+from django.contrib.auth.tokens import default_token_generator
+from django.utils.http import urlsafe_base64_encode
+from django.utils.encoding import force_bytes
+from django.conf import settings as django_settings
 from datetime import timedelta
 import random
 
@@ -16,14 +23,29 @@ def generate_and_send_otp(user):
     user.otp_code = otp
     user.otp_expires_at = timezone.now() + timedelta(minutes=10)
     user.save()
-    
-    # For development, print to console - ensuring flush=True for immediate output
+
+    # Always log to console for debugging
     print(f"\n{'='*50}", flush=True)
     print(f"OTP for {user.email}: {otp}", flush=True)
     print(f"{'='*50}\n", flush=True)
-    
-    # TODO: Implement SMS/Email sending here
-    pass
+
+    # Send actual email
+    try:
+        html_message = render_to_string('emails/otp_verification.html', {
+            'full_name': user.full_name or user.email,
+            'otp_code': otp,
+        })
+        send_mail(
+            subject='Your NaijaBus Verification Code',
+            message=f'Your OTP code is: {otp}. It expires in 10 minutes.',
+            from_email=django_settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[user.email],
+            html_message=html_message,
+            fail_silently=True,
+        )
+    except Exception as e:
+        print(f"[EMAIL ERROR] Failed to send OTP email: {e}", flush=True)
+
 
 class RegisterView(APIView):
     """
@@ -176,7 +198,34 @@ class PasswordResetView(APIView):
         email = request.data.get('email')
         if not email:
             return Response({'error': 'Email required'}, status=status.HTTP_400_BAD_REQUEST)
-        
+
+        try:
+            user = User.objects.get(email=email)
+            # Generate a secure token
+            uid = urlsafe_base64_encode(force_bytes(user.pk))
+            token = default_token_generator.make_token(user)
+            # Build the reset URL pointing to the frontend
+            frontend_url = django_settings.PAYSTACK_CALLBACK_URL.split('/api')[0] if django_settings.PAYSTACK_CALLBACK_URL else 'http://localhost:8080'
+            reset_url = f"{frontend_url}/reset-password?uid={uid}&token={token}"
+
+            try:
+                html_message = render_to_string('emails/password_reset.html', {
+                    'full_name': user.full_name or user.email,
+                    'reset_url': reset_url,
+                })
+                send_mail(
+                    subject='Reset Your NaijaBus Password',
+                    message=f'Click this link to reset your password: {reset_url}',
+                    from_email=django_settings.DEFAULT_FROM_EMAIL,
+                    recipient_list=[user.email],
+                    html_message=html_message,
+                    fail_silently=True,
+                )
+            except Exception as e:
+                print(f"[EMAIL ERROR] Failed to send reset email: {e}", flush=True)
+        except User.DoesNotExist:
+            pass  # Don't reveal if email exists
+
         # Always return success (security best practice)
         return Response({'message': 'Password reset email sent'})
 
