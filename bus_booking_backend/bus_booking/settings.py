@@ -99,19 +99,25 @@ SIMPLE_JWT = {
 
 AUTH_USER_MODEL = 'accounts.User'
 
-# Database - SQLite (default for development)
+# Database - uses dj_database_url to switch between SQLite (local) and PostgreSQL (Render).
+# On Render, set DATABASE_URL env var. Locally, it falls back to SQLite.
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
+    'default': dj_database_url.config(
+        default=str(BASE_DIR / 'db.sqlite3').replace('\\\\', '/') if os.name == 'nt' else f'sqlite:///{BASE_DIR}/db.sqlite3',
+        conn_max_age=600
+    )
 }
 
 # CORS - Allow frontend origins
-CORS_ALLOWED_ORIGINS = os.getenv(
-    'CORS_ORIGINS', 
-    'http://localhost:3000,http://localhost:5173,http://localhost:8080,http://localhost:8081,https://go-bus-ng-frontend.onrender.com'
-).split(',')
+# In production on Render, set CORS_ALLOW_ALL_ORIGINS=True env var to allow all origins.
+# Locally, all localhost ports plus the Render frontend are allowed by default.
+if os.getenv('CORS_ALLOW_ALL_ORIGINS', 'False') == 'True':
+    CORS_ALLOW_ALL_ORIGINS = True
+else:
+    CORS_ALLOWED_ORIGINS = os.getenv(
+        'CORS_ORIGINS',
+        'http://localhost:3000,http://localhost:5173,http://localhost:8080,http://localhost:8081,https://go-bus-ng-frontend.onrender.com'
+    ).split(',')
 CORS_ALLOW_CREDENTIALS = True
 
 # Static files
@@ -152,6 +158,7 @@ PAYSTACK_MOCK_REDIRECT_URL_TEMPLATE = os.getenv(
     'PAYSTACK_MOCK_REDIRECT_URL_TEMPLATE',
     'http://localhost:8080/booking/{id}/payment?reference={reference}',
 )
+
 
 
 
