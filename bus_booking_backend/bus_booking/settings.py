@@ -110,7 +110,7 @@ DATABASES = {
 # CORS - Allow frontend origins
 CORS_ALLOWED_ORIGINS = os.getenv(
     'CORS_ORIGINS', 
-    'http://localhost:3000,http://localhost:5173,http://localhost:8080,http://localhost:8081'
+    'http://localhost:3000,http://localhost:5173,http://localhost:8080,http://localhost:8081,https://go-bus-ng-frontend.onrender.com'
 ).split(',')
 CORS_ALLOW_CREDENTIALS = True
 
@@ -152,5 +152,6 @@ PAYSTACK_MOCK_REDIRECT_URL_TEMPLATE = os.getenv(
     'PAYSTACK_MOCK_REDIRECT_URL_TEMPLATE',
     'http://localhost:8080/booking/{id}/payment?reference={reference}',
 )
+
 
 
