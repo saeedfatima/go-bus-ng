@@ -15,6 +15,7 @@ const Login = () => {
   const [isLogin, setIsLogin] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isSlowLoad, setIsSlowLoad] = useState(false);
   const [showOtpVerification, setShowOtpVerification] = useState(false);
   const [formData, setFormData] = useState({
     email: '',
@@ -36,6 +37,9 @@ const Login = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
+    setIsSlowLoad(false);
+    // After 5 seconds, show a hint that the server may be waking up (Render free tier)
+    const slowTimer = setTimeout(() => setIsSlowLoad(true), 5000);
 
     try {
       if (isLogin) {
@@ -62,7 +66,9 @@ const Login = () => {
       const err = error as Error;
       toast.error(err.message || 'An error occurred');
     } finally {
+      clearTimeout(slowTimer);
       setIsLoading(false);
+      setIsSlowLoad(false);
     }
   };
 
@@ -230,8 +236,19 @@ const Login = () => {
                   </div>
 
                   <Button type="submit" size="lg" className="w-full" disabled={isLoading}>
-                    {isLoading ? 'Please wait...' : isLogin ? 'Sign In' : 'Create Account'}
+                    {isLoading ? (
+                      <span className="flex items-center gap-2">
+                        <RefreshCw className="h-4 w-4 animate-spin" />
+                        {isSlowLoad ? 'Server waking up, please wait...' : 'Please wait...'}
+                      </span>
+                    ) : isLogin ? 'Sign In' : 'Create Account'}
                   </Button>
+                  {isSlowLoad && (
+                    <p className="text-xs text-center text-amber-500 flex items-center justify-center gap-1">
+                      <AlertCircle className="h-3 w-3" />
+                      The server is starting up. This may take up to 60 seconds on first use.
+                    </p>
+                  )}
                 </form>
 
                 <div className="mt-6 text-center">
