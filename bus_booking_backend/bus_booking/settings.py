@@ -99,18 +99,25 @@ SIMPLE_JWT = {
 
 AUTH_USER_MODEL = 'accounts.User'
 
-# Database - uses dj_database_url to switch between SQLite (local) and PostgreSQL (Render).
-# On Render, set DATABASE_URL env var. Locally, it falls back to SQLite.
-DATABASES = {
-    'default': dj_database_url.config(
-        default=str(BASE_DIR / 'db.sqlite3').replace('\\\\', '/') if os.name == 'nt' else f'sqlite:///{BASE_DIR}/db.sqlite3',
-        conn_max_age=600
-    )
-}
+# Database:
+# - On Render: set DATABASE_URL env var to the PostgreSQL connection string.
+# - Locally:   falls back to a local SQLite file — no env var needed.
+_database_url = os.getenv('DATABASE_URL')
+if _database_url:
+    DATABASES = {
+        'default': dj_database_url.config(conn_max_age=600)
+    }
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 
-# CORS - Allow frontend origins
-# In production on Render, set CORS_ALLOW_ALL_ORIGINS=True env var to allow all origins.
-# Locally, all localhost ports plus the Render frontend are allowed by default.
+# CORS - Allow frontend origins.
+# On Render: set CORS_ALLOW_ALL_ORIGINS=True in the backend environment variables.
+# Locally: all localhost ports plus the Render frontend are allowed by default.
 if os.getenv('CORS_ALLOW_ALL_ORIGINS', 'False') == 'True':
     CORS_ALLOW_ALL_ORIGINS = True
 else:
@@ -123,6 +130,13 @@ CORS_ALLOW_CREDENTIALS = True
 # Static files
 STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+# WhiteNoise configuration for serving static files efficiently
+STORAGES = {
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
 
 # Media files
 MEDIA_URL = 'media/'
@@ -158,7 +172,3 @@ PAYSTACK_MOCK_REDIRECT_URL_TEMPLATE = os.getenv(
     'PAYSTACK_MOCK_REDIRECT_URL_TEMPLATE',
     'http://localhost:8080/booking/{id}/payment?reference={reference}',
 )
-
-
-
-
