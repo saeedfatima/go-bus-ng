@@ -17,6 +17,7 @@ from .serializers import InitializePaymentSerializer
 from .paystack_config import can_use_real_paystack
 from apps.bookings.models import Booking, BookingStatus
 from apps.accounts.models import AppRole
+from utils.emails import send_ticket_email
 
 
 def is_mock_fallback_enabled() -> bool:
@@ -262,6 +263,7 @@ class VerifyPaymentView(APIView):
                         booking.status = BookingStatus.CONFIRMED
                         booking.payment_completed_at = timezone.now()
                         booking.save(update_fields=['status', 'payment_completed_at', 'updated_at'])
+                        send_ticket_email(booking)
                 else:
                     booking = payment.booking
 
@@ -316,6 +318,7 @@ class VerifyPaymentView(APIView):
                     booking.status = BookingStatus.CONFIRMED
                     booking.payment_completed_at = timezone.now()
                     booking.save(update_fields=['status', 'payment_completed_at', 'updated_at'])
+                    send_ticket_email(booking)
 
                 return Response({
                     'status': 'success',
@@ -392,6 +395,7 @@ class WebhookView(APIView):
                         booking.status = BookingStatus.CONFIRMED
                         booking.payment_completed_at = timezone.now()
                         booking.save(update_fields=['status', 'payment_completed_at', 'updated_at'])
+                        send_ticket_email(booking)
         except Payment.DoesNotExist:
             # Unknown reference can happen if webhook arrives for stale/deleted local data.
             return Response({'message': 'Payment reference not found'}, status=status.HTTP_200_OK)

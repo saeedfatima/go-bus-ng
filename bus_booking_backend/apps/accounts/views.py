@@ -4,10 +4,6 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.utils import timezone
-from django.utils.html import strip_tags
-from django.core.mail import send_mail
-from django.template.loader import render_to_string
-from django.contrib.auth.tokens import default_token_generator
 from django.utils.http import urlsafe_base64_encode
 from django.utils.encoding import force_bytes
 from django.conf import settings as django_settings
@@ -17,6 +13,7 @@ import random
 from .models import User, UserRole, AppRole
 from .serializers import RegisterSerializer, LoginSerializer, UserSerializer, UserRoleSerializer
 from utils.permissions import IsAdmin
+from utils.emails import send_otp_email, send_password_reset_email, send_ticket_email
 
 def generate_and_send_otp(user):
     otp = str(random.randint(100000, 999999))
@@ -26,25 +23,11 @@ def generate_and_send_otp(user):
 
     # Always log to console for debugging
     print(f"\n{'='*50}", flush=True)
-    print(f"OTP for {user.email}: {otp}", flush=True)
+    print(f"OTP for {user.email}: {user.otp_code}", flush=True)
     print(f"{'='*50}\n", flush=True)
 
-    # Send actual email
-    try:
-        html_message = render_to_string('emails/otp_verification.html', {
-            'full_name': user.full_name or user.email,
-            'otp_code': otp,
-        })
-        send_mail(
-            subject='Your NaijaBus Verification Code',
-            message=f'Your OTP code is: {otp}. It expires in 10 minutes.',
-            from_email=django_settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[user.email],
-            html_message=html_message,
-            fail_silently=True,
-        )
-    except Exception as e:
-        print(f"[EMAIL ERROR] Failed to send OTP email: {e}", flush=True)
+    # Send actual email using utility
+    send_otp_email(user)
 
 
 class RegisterView(APIView):
@@ -208,21 +191,7 @@ class PasswordResetView(APIView):
             frontend_url = django_settings.PAYSTACK_CALLBACK_URL.split('/api')[0] if django_settings.PAYSTACK_CALLBACK_URL else 'http://localhost:8080'
             reset_url = f"{frontend_url}/reset-password?uid={uid}&token={token}"
 
-            try:
-                html_message = render_to_string('emails/password_reset.html', {
-                    'full_name': user.full_name or user.email,
-                    'reset_url': reset_url,
-                })
-                send_mail(
-                    subject='Reset Your NaijaBus Password',
-                    message=f'Click this link to reset your password: {reset_url}',
-                    from_email=django_settings.DEFAULT_FROM_EMAIL,
-                    recipient_list=[user.email],
-                    html_message=html_message,
-                    fail_silently=True,
-                )
-            except Exception as e:
-                print(f"[EMAIL ERROR] Failed to send reset email: {e}", flush=True)
+            send_password_reset_email(user, reset_url)
         except User.DoesNotExist:
             pass  # Don't reveal if email exists
 
@@ -393,36 +362,18 @@ class InvokeFunctionView(APIView):
 
     def handle_send_booking_email(self, data):
         """Handle send-booking-email function"""
-        from django.core.mail import send_mail
-        from django.template.loader import render_to_string
-        from django.utils.html import strip_tags
-        from django.conf import settings
-
+        from apps.bookings.models import Booking
+        from utils.emails import send_ticket_email
+        booking_id = data.get('booking_id')
+        if not booking_id:
+            return {"error": "booking_id required"}
+        
         try:
-            # Extract data
-            passenger_name = data.get('passenger_name')
-            passenger_email = data.get('passenger_email')
-            ticket_code = data.get('ticket_code')
-            # Add other necessary fields for the email
-            
-            if not passenger_email:
-                return {'error': 'Passenger email required'}
-
-            # Render HTML content
-            html_message = render_to_string('emails/booking_confirmation.html', data)
-            plain_message = strip_tags(html_message)
-            
-            send_mail(
-                subject=f'Booking Confirmation - {ticket_code}',
-                message=plain_message,
-                from_email=settings.DEFAULT_FROM_EMAIL,
-                recipient_list=[passenger_email],
-                html_message=html_message,
-                fail_silently=False,
-            )
-            
-            return {'success': True, 'message': 'Email sent successfully'}
-        except Exception as e:
-            # Log the error in production
-            print(f"Error sending email: {str(e)}")
-            return {'success': False, 'message': str(e)}
+            booking = Booking.objects.get(id=booking_id)
+            sent = send_ticket_email(booking)
+            if sent:
+                return {"message": "Email sent successfully"}
+            else:
+                return {"error": "Failed to send email"}
+        except Booking.DoesNotExist:
+            return {"error": "Booking not found"}
