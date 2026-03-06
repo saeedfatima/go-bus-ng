@@ -44,7 +44,17 @@ Follow these exact steps to fully deploy both your Django Backend and React Fron
 6. Click **Create Web Service**.
 7. Render will now build your app. This might take 3-5 minutes.
 
-## Step 5: Update the Frontend API URL
+## Step 5: Automate Superadmin Creation (Optional but recommended)
+Since Render's free tier does not support the interactive shell for `createsuperuser`, you can automate this using environment variables.
+
+1. Still in the **Environment** tab on Render, add these variables:
+   * Key: `ADMIN_EMAIL` | Value: *(e.g., yourname@example.com)*
+   * Key: `ADMIN_PASSWORD` | Value: *(e.g., a strong password)*
+2. Click **Save Changes**.
+3. Render will rebuild and deploy your app. Once finished, you can log in at `https://go-bus-ng-backend.onrender.com/admin/`.
+*(Note: You can delete these two environment variables from Render once the admin user is created!)*
+
+## Step 6: Update the Frontend API URL
 1. In your local code editor, open `frontend/.env.production`.
 2. Ensure the `VITE_DJANGO_API_URL` exactly matches your backend URL:
    `VITE_DJANGO_API_URL=https://go-bus-ng-backend.onrender.com`
