@@ -102,10 +102,13 @@ AUTH_USER_MODEL = 'accounts.User'
 # Database:
 # - On Render: set DATABASE_URL env var to the PostgreSQL connection string.
 # - Locally:   falls back to a local SQLite file — no env var needed.
-_database_url = os.getenv('DATABASE_URL')
-if _database_url:
+if os.getenv('DATABASE_URL'):
     DATABASES = {
-        'default': dj_database_url.config(conn_max_age=600)
+        'default': dj_database_url.config(
+            conn_max_age=600,
+            conn_health_checks=True,
+            ssl_require=True,
+        )
     }
 else:
     DATABASES = {
@@ -131,9 +134,10 @@ STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 # WhiteNoise configuration for serving static files efficiently
+# Using standard storage to avoid manifest errors if collectstatic hasn't been run locally.
 STORAGES = {
     "staticfiles": {
-        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        "BACKEND": "whitenoise.storage.CompressedStaticFilesStorage",
     },
 }
 
