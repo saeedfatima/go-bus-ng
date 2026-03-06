@@ -12,6 +12,8 @@ except ImportError:
 if load_dotenv:
     load_dotenv(BASE_DIR / '.env', override=True)
 
+import dj_database_url
+
 SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'django-insecure-your-dev-secret-key-change-in-production')
 DEBUG = os.getenv('DEBUG', 'True') == 'True'
 ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
@@ -44,6 +46,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -149,3 +152,5 @@ PAYSTACK_MOCK_REDIRECT_URL_TEMPLATE = os.getenv(
     'PAYSTACK_MOCK_REDIRECT_URL_TEMPLATE',
     'http://localhost:8080/booking/{id}/payment?reference={reference}',
 )
+
+
