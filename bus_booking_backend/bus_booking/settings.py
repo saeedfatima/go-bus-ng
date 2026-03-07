@@ -102,13 +102,10 @@ AUTH_USER_MODEL = 'accounts.User'
 # Database:
 # - On Render: set DATABASE_URL env var to the PostgreSQL connection string.
 # - Locally:   falls back to a local SQLite file — no env var needed.
-if os.getenv('DATABASE_URL'):
+_database_url = os.getenv('DATABASE_URL')
+if _database_url:
     DATABASES = {
-        'default': dj_database_url.config(
-            conn_max_age=600,
-            conn_health_checks=True,
-            ssl_require=True,
-        )
+        'default': dj_database_url.config(conn_max_age=600)
     }
 else:
     DATABASES = {
@@ -119,14 +116,15 @@ else:
     }
 
 # CORS - Allow frontend origins.
-# Allow all origins by default. To restrict, set CORS_RESTRICT=True and CORS_ORIGINS env var on Render.
-if os.getenv('CORS_RESTRICT', 'False') == 'True':
+# On Render: set CORS_ALLOW_ALL_ORIGINS=True in the backend environment variables.
+# Locally: all localhost ports plus the Render frontend are allowed by default.
+if os.getenv('CORS_ALLOW_ALL_ORIGINS', 'False') == 'True':
+    CORS_ALLOW_ALL_ORIGINS = True
+else:
     CORS_ALLOWED_ORIGINS = os.getenv(
         'CORS_ORIGINS',
         'http://localhost:3000,http://localhost:5173,http://localhost:8080,http://localhost:8081,https://go-bus-ng-frontend.onrender.com'
     ).split(',')
-else:
-    CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
 
 # Static files
@@ -134,10 +132,9 @@ STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 # WhiteNoise configuration for serving static files efficiently
-# Using standard storage to avoid manifest errors if collectstatic hasn't been run locally.
 STORAGES = {
     "staticfiles": {
-        "BACKEND": "whitenoise.storage.CompressedStaticFilesStorage",
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
     },
 }
 
@@ -149,6 +146,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # Email configuration
 # Locally: prints to console (no setup needed).
+# app email password: pmjs tmuh gexj hrtq
 # On Render: set EMAIL_HOST_USER and EMAIL_HOST_PASSWORD env vars to use real Gmail SMTP.
 if os.getenv('EMAIL_HOST_USER'):
     EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
