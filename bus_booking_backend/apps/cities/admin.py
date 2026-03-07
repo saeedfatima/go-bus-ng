@@ -1,5 +1,9 @@
 from django.contrib import admin
 from .models import City
 
-admin.site.register(City)
-
+@admin.register(City)
+class CityAdmin(admin.ModelAdmin):
+    list_display = ('name', 'state', 'created_at')
+    list_filter = ('state',)
+    search_fields = ('name', 'state')
+    ordering = ('name',)
