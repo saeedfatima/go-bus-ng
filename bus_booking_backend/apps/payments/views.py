@@ -89,6 +89,7 @@ class InitializePaymentView(APIView):
 
         # Hybrid fallback: only for config issues, only in local/dev mode.
         if not can_use_real_gateway:
+            print(f"[PAYMENT] Fallback to Mock Mode: {config_reason}", flush=True)
             if is_mock_fallback_enabled():
                 reference = str(uuid.uuid4())
                 payment = Payment.objects.create(

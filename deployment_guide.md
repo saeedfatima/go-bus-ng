@@ -26,21 +26,16 @@ Follow these exact steps to fully deploy both your Django Backend and React Fron
    * **Build Command**: `./build.sh`
    * **Start Command**: `gunicorn bus_booking.wsgi:application`
    * **Instance Type**: Select **Free**.
-4. Scroll down to **Advanced** -> **Environment Variables** and click "Add Environment Variable". Add the following:
-   * Key: `DATABASE_URL` | Value: *(Paste the Internal Database URL from Step 3)*
-   * Key: `DJANGO_SECRET_KEY` | Value: *(Type a long random string of characters)*
+4. Select **Advanced** -> **Environment Variables** and add:
+   * Key: `FRONTEND_URL` | Value: `https://go-bus-ng-frontend.onrender.com`
+   * Key: `PAYSTACK_SECRET_KEY` | Value: *(Your Live Secret Key from Paystack Dashboard)*
+   * Key: `PAYSTACK_CALLBACK_URL` | Value: `https://go-bus-ng-frontend.onrender.com/api/v1/payments/callback`
+   * Key: `DATABASE_URL` | Value: *(Automatically link your Render PostgreSQL)*
+   * Key: `DJANGO_SECRET_KEY` | Value: *(Type a long random string)*
    * Key: `DEBUG` | Value: `False`
-   * Key: `ALLOWED_HOSTS` | Value: `.onrender.com,localhost,127.0.0.1` 
+   * Key: `ALLOWED_HOSTS` | Value: `*`
    * Key: `CORS_ALLOW_ALL_ORIGINS` | Value: `True`
-   * Key: `DEFAULT_FROM_EMAIL` | Value: `saidua2018@gmail.com` (Or your Gmail)
-   * Key: `EMAIL_HOST_USER` | Value: `saidua2018@gmail.com`
-   * Key: `EMAIL_HOST_PASSWORD` | Value: *(Your 16-character Gmail App Password)*
-5. **How to get a Gmail App Password:**
-   * Go to [Google Account Security](https://myaccount.google.com/security).
-   * Enable **2-Step Verification** if not already on.
-   * Search for **"App Passwords"** at the top.
-   * Create an app password for "Other" and name it "NaijaBus".
-   * Copy the 16-character code and paste it into the `EMAIL_HOST_PASSWORD` field on Render.
+   * Key: `EMAIL_HOST_PASSWORD` | Value: *(Your Resend API Key)*
 6. Click **Create Web Service**.
 7. Render will now build your app. This might take 3-5 minutes.
 

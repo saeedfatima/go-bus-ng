@@ -1,4 +1,4 @@
-﻿from django.contrib.auth.tokens import default_token_generator
+from django.contrib.auth.tokens import default_token_generator
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -189,8 +189,7 @@ class PasswordResetView(APIView):
             uid = urlsafe_base64_encode(force_bytes(user.pk))
             token = default_token_generator.make_token(user)
             # Build the reset URL pointing to the frontend
-            frontend_url = django_settings.PAYSTACK_CALLBACK_URL.split('/api')[0] if django_settings.PAYSTACK_CALLBACK_URL else 'http://localhost:8080'
-            reset_url = f"{frontend_url}/reset-password?uid={uid}&token={token}"
+            reset_url = f"{django_settings.FRONTEND_URL}/reset-password?uid={uid}&token={token}"
 
             send_password_reset_email(user, reset_url)
         except User.DoesNotExist:
@@ -238,7 +237,7 @@ class ResendVerificationView(APIView):
             generate_and_send_otp(user)
             return Response({'message': 'Verification email sent'})
         except User.DoesNotExist:
-             return Response({'message': 'Verification email sent'})
+            return Response({'message': 'Verification email sent'})
 
 class ListUserRolesView(APIView):
     """
@@ -378,4 +377,3 @@ class InvokeFunctionView(APIView):
                 return {"error": "Failed to send email"}
         except Booking.DoesNotExist:
             return {"error": "Booking not found"}
-

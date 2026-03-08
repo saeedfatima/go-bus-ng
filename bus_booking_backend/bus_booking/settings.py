@@ -174,10 +174,15 @@ EMAIL_USE_SSL = os.getenv('EMAIL_USE_SSL', 'False') == 'True' # Default False fo
 EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True') == 'True'  # Default True for 587
 DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'onboarding@resend.dev')
 
+# Frontend URL for links (Paystack redirects, email verification, etc.)
+# If not set, it defaults to the local dev server.
+FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:8080').rstrip('/')
+
 # Paystack configuration
-# Use environment variables in production. Example values:
 PAYSTACK_SECRET_KEY = os.getenv('PAYSTACK_SECRET_KEY', '')
-PAYSTACK_CALLBACK_URL = os.getenv('PAYSTACK_CALLBACK_URL', '')
+# Callback URL matches the frontend payment processing page
+PAYSTACK_CALLBACK_URL = os.getenv('PAYSTACK_CALLBACK_URL', f'{FRONTEND_URL}/api/v1/payments/callback')
+PAYSTACK_MOCK_REDIRECT_URL_TEMPLATE = os.getenv('PAYSTACK_MOCK_REDIRECT_URL_TEMPLATE', f'{FRONTEND_URL}/booking/{{id}}/payment?reference={{reference}}')
 
 # Hybrid fallback for local/dev testing.
 # If env var is not provided, default to enabled only in DEBUG.
