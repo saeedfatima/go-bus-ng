@@ -44,6 +44,21 @@ Follow these exact steps to fully deploy both your Django Backend and React Fron
 6. Click **Create Web Service**.
 7. Render will now build your app. This might take 3-5 minutes.
 
+---
+
+### Alternative: Using Resend (Recommended for Reliability)
+If Gmail is giving you "Network Unreachable" errors, use **Resend**. The free tier allows 3,000 emails/month.
+
+1. Go to [Resend.com](https://resend.com) and create an account.
+2. Go to **API Keys** and create a new key.
+3. In your Render Dashboard -> **Environment**, update these variables:
+   * Key: `EMAIL_HOST` | Value: `smtp.resend.com`
+   * Key: `EMAIL_PORT` | Value: `465`
+   * Key: `EMAIL_HOST_USER` | Value: `resend`
+   * Key: `EMAIL_HOST_PASSWORD` | Value: *(Your Resend API Key starting with re_)*
+   * Key: `DEFAULT_FROM_EMAIL` | Value: `onboarding@resend.dev` (Or your verified domain email)
+4. Click **Save Changes**.
+
 ## Step 5: Automate Superadmin Creation (Optional but recommended)
 Since Render's free tier does not support the interactive shell for `createsuperuser`, you can automate this using environment variables.
 
