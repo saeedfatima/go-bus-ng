@@ -1,3 +1,4 @@
+﻿from django.contrib.auth.tokens import default_token_generator
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -377,3 +378,4 @@ class InvokeFunctionView(APIView):
                 return {"error": "Failed to send email"}
         except Booking.DoesNotExist:
             return {"error": "Booking not found"}
+
