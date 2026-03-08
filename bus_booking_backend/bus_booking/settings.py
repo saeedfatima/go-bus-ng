@@ -167,11 +167,11 @@ else:
         print("[SYSTEM] Email Backend: CONSOLE (Fallback)", flush=True)
 
 EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.resend.com') # Default to Resend
-EMAIL_PORT = int(os.getenv('EMAIL_PORT', 465))
+EMAIL_PORT = int(os.getenv('EMAIL_PORT', 587))
 EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', 'resend') # Resend username is always 'resend'
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '') # Your Resend API Key
-EMAIL_USE_SSL = os.getenv('EMAIL_USE_SSL', 'True') == 'True'
-EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'False') == 'True'
+EMAIL_USE_SSL = os.getenv('EMAIL_USE_SSL', 'False') == 'True' # Default False for 587
+EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True') == 'True'  # Default True for 587
 DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'onboarding@resend.dev')
 
 # Paystack configuration

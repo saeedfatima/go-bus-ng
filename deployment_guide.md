@@ -53,9 +53,10 @@ If Gmail is giving you "Network Unreachable" errors, use **Resend**. The free ti
 2. Go to **API Keys** and create a new key.
 3. In your Render Dashboard -> **Environment**, update these variables:
    * Key: `EMAIL_HOST` | Value: `smtp.resend.com`
-   * Key: `EMAIL_PORT` | Value: `465`
+   * Key: `EMAIL_PORT` | Value: `587`
    * Key: `EMAIL_HOST_USER` | Value: `resend`
    * Key: `EMAIL_HOST_PASSWORD` | Value: *(Your Resend API Key starting with re_)*
+   * Key: `EMAIL_USE_TLS` | Value: `True`
    * Key: `DEFAULT_FROM_EMAIL` | Value: `onboarding@resend.dev` (Or your verified domain email)
 4. Click **Save Changes**.
 
