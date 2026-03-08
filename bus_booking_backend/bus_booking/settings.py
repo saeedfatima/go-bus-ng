@@ -155,8 +155,12 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Locally: prints to console (no setup needed).
 # On Render: Use Gmail or Resend (recommended).
 EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
-if os.getenv('EMAIL_HOST_USER'):
+if os.getenv('EMAIL_HOST_PASSWORD'):
     EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+else:
+    # Optional logic to also allow EMAIL_HOST_USER for backward compatibility
+    if os.getenv('EMAIL_HOST_USER'):
+        EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 
 EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.resend.com') # Default to Resend
 EMAIL_PORT = int(os.getenv('EMAIL_PORT', 465))
