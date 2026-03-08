@@ -10,8 +10,13 @@ pip install --upgrade pip
 # Install dependencies
 pip install -r requirements.txt
 
+# Create migrations just in case some were missed locally
+echo "Creating potential missing migrations..."
+python manage.py makemigrations --no-input
+
 # Run migrations
-python manage.py migrate
+echo "Applying database migrations..."
+python manage.py migrate --no-input
 
 # Collect static files
 python manage.py collectstatic --no-input

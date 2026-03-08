@@ -104,8 +104,13 @@ AUTH_USER_MODEL = 'accounts.User'
 # - Locally:   falls back to a local SQLite file — no env var needed.
 _database_url = os.getenv('DATABASE_URL')
 if _database_url:
+    # Render PostgreSQL requires SSL. Enabling conn_health_checks for reliability.
     DATABASES = {
-        'default': dj_database_url.config(conn_max_age=600)
+        'default': dj_database_url.config(
+            conn_max_age=600,
+            conn_health_checks=True,
+            ssl_require=True,
+        )
     }
 else:
     DATABASES = {
@@ -132,22 +137,20 @@ STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 # WhiteNoise configuration for serving static files efficiently
+# Using CompressedStaticFilesStorage to be safer on the free tier.
 STORAGES = {
     "staticfiles": {
-        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        "BACKEND": "whitenoise.storage.CompressedStaticFilesStorage",
     },
 }
 
 # Media files
-MEDIA_URL = 'media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # Email configuration
 # Locally: prints to console (no setup needed).
-# app email password: pmjs tmuh gexj hrtq
-# my superadmin password = dee392a934675ac5542813f2a0cb0990
 # On Render: set EMAIL_HOST_USER and EMAIL_HOST_PASSWORD env vars to use real Gmail SMTP.
 if os.getenv('EMAIL_HOST_USER'):
     EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
