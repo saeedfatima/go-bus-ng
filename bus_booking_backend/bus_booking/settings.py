@@ -147,6 +147,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Email configuration
 # Locally: prints to console (no setup needed).
 # app email password: pmjs tmuh gexj hrtq
+# my superadmin password = dee392a934675ac5542813f2a0cb0990
 # On Render: set EMAIL_HOST_USER and EMAIL_HOST_PASSWORD env vars to use real Gmail SMTP.
 if os.getenv('EMAIL_HOST_USER'):
     EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
