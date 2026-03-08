@@ -22,9 +22,9 @@ def _send_email_async(subject, plain_message, html_message, recipient_list):
                 html_message=html_message,
                 fail_silently=False,
             )
-            logger.info(f"Email sent successfully to {recipient_list}")
+            print(f"[EMAIL] Success: Email sent to {recipient_list}", flush=True)
         except Exception as e:
-            logger.error(f"Failed to send email to {recipient_list}: {str(e)}")
+            print(f"[EMAIL] ERROR: Failed to send email to {recipient_list}: {str(e)}", flush=True)
 
     thread = threading.Thread(target=send)
     thread.start()

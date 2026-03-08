@@ -157,10 +157,14 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 if os.getenv('EMAIL_HOST_PASSWORD'):
     EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+    print("[SYSTEM] Email Backend: SMTP (Engaged)", flush=True)
 else:
     # Optional logic to also allow EMAIL_HOST_USER for backward compatibility
     if os.getenv('EMAIL_HOST_USER'):
         EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+        print("[SYSTEM] Email Backend: SMTP (Engaged via User)", flush=True)
+    else:
+        print("[SYSTEM] Email Backend: CONSOLE (Fallback)", flush=True)
 
 EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.resend.com') # Default to Resend
 EMAIL_PORT = int(os.getenv('EMAIL_PORT', 465))
