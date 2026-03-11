@@ -42,20 +42,22 @@ Follow these exact steps to fully deploy both your Django Backend and React Fron
 
 ---
 
-### Alternative: Using Resend (Recommended for Reliability)
-If Gmail is giving you "Network Unreachable" errors, use **Resend**. The free tier allows 3,000 emails/month.
+### Step 7: Resend Setup (Testing Mode - No Domain)
+If you do not have a custom domain, you can still test your project using Resend's **Testing Mode**.
 
-1. Go to [Resend.com](https://resend.com) and create an account.
+1. Go to [Resend.com](https://resend.com) and sign up with your **Gmail address**.
 2. Go to **API Keys** and create a new key.
-3. In your Render Dashboard -> **Environment**, update these variables:
+3. In your **Render Dashboard -> Environment**, add/update these variables:
    * Key: `EMAIL_HOST` | Value: `smtp.resend.com`
    * Key: `EMAIL_PORT` | Value: `587`
    * Key: `EMAIL_HOST_USER` | Value: `resend`
    * Key: `EMAIL_HOST_PASSWORD` | Value: *(Your Resend API Key starting with re_)*
    * Key: `EMAIL_USE_TLS` | Value: `True`
-   * Key: `DEFAULT_FROM_EMAIL` | Value: `onboarding@resend.dev` (Or your verified domain email)
-4. Select **Advanced** -> **Environment Variables** and add:
-   * Key: `VITE_API_URL` | Value: `https://go-bus-ng-backend.onrender.com/api/v1`
+   * Key: `DEFAULT_FROM_EMAIL` | Value: `onboarding@resend.dev`
+
+> [!IMPORTANT]
+> **CRITICAL RESTRICTION:** In Testing Mode, Resend will **ONLY** deliver emails to the email address you used to sign up for Resend. 
+> To test your OTP and Tickets, you **MUST** register your users using that same email address. Emails sent to any other address will be accepted by the server but **never delivered**.
 
 ### Step 8: Fix "Not Found" (404) Errors on Refresh/Redirect
 Since this is a Single Page Application (SPA), Render needs to be told to redirect all paths to `index.html`.
