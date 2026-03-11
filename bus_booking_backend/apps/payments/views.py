@@ -294,6 +294,7 @@ class VerifyPaymentView(APIView):
                 timeout=20,
             )
             data = gateway_response.json()
+            print(f"[PAYMENT] Verify Response for {reference}: {data.get('status')} - {data.get('data', {}).get('status')}", flush=True)
         except requests.RequestException as exc:
             return Response(
                 {'error': f'Unable to reach Paystack: {exc}'},
@@ -375,7 +376,10 @@ class WebhookView(APIView):
     def post(self, request):
         # Step 1: Reject unsigned or tampered webhooks.
         if not self._is_valid_signature(request):
+            print(f"[PAYMENT] Webhook Error: Invalid Signature", flush=True)
             return Response({'error': 'Invalid webhook signature'}, status=status.HTTP_400_BAD_REQUEST)
+
+        print(f"[PAYMENT] Webhook Received: {request.data.get('event')}", flush=True)
 
         # Step 2: Parse webhook event envelope.
         event = request.data.get('event')
