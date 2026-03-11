@@ -351,11 +351,19 @@ class WebhookView(APIView):
     def _is_valid_signature(self, request):
         """
         Paystack signs webhook body with SHA512(secret_key, raw_body).
+        Prioritizes PAYSTACK_WEBHOOK_SECRET, falls back to PAYSTACK_SECRET_KEY.
         """
-        secret_key = (getattr(settings, 'PAYSTACK_SECRET_KEY', '') or '').strip()
+        # 1. Determine which secret to use.
+        secret_key = (
+            getattr(settings, 'PAYSTACK_WEBHOOK_SECRET', '') or
+            getattr(settings, 'PAYSTACK_SECRET_KEY', '') or
+            ''
+        ).strip()
+
         if not secret_key:
             return False
 
+        # 2. Verify signature.
         incoming_signature = request.headers.get('X-Paystack-Signature', '')
         expected_signature = hmac.new(
             secret_key.encode('utf-8'),
