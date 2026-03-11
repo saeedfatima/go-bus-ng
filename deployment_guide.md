@@ -54,7 +54,21 @@ If Gmail is giving you "Network Unreachable" errors, use **Resend**. The free ti
    * Key: `EMAIL_HOST_PASSWORD` | Value: *(Your Resend API Key starting with re_)*
    * Key: `EMAIL_USE_TLS` | Value: `True`
    * Key: `DEFAULT_FROM_EMAIL` | Value: `onboarding@resend.dev` (Or your verified domain email)
+4. Select **Advanced** -> **Environment Variables** and add:
+   * Key: `VITE_API_URL` | Value: `https://go-bus-ng-backend.onrender.com/api/v1`
+
+### Step 8: Fix "Not Found" (404) Errors on Refresh/Redirect
+Since this is a Single Page Application (SPA), Render needs to be told to redirect all paths to `index.html`.
+
+1. In the **Render Dashboard**, go to your **Frontend Static Site**.
+2. Click on **Redirects/Rewrites**.
+3. Add a new rule:
+   * **Source**: `/*`
+   * **Destination**: `/index.html`
+   * **Action**: `Rewrite`
 4. Click **Save Changes**.
+
+*(This ensures that when Paystack redirects you to `/booking/.../payment`, the React app loads correctly instead of showing a 404.)*
 
 ---
 
