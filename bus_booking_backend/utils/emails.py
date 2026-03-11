@@ -24,7 +24,9 @@ def _send_email_async(subject, plain_message, html_message, recipient_list):
             )
             print(f"[EMAIL] Success: Email sent to {recipient_list}", flush=True)
         except Exception as e:
-            print(f"[EMAIL] ERROR: Failed to send email to {recipient_list}: {str(e)}", flush=True)
+            # Safer diagnostics: tell us the host/port being used without the password
+            config_info = f"Host: {getattr(settings, 'EMAIL_HOST', 'N/A')}:{getattr(settings, 'EMAIL_PORT', 'N/A')}"
+            print(f"[EMAIL] ERROR: Failed to send to {recipient_list}. {config_info}. Error: {str(e)}", flush=True)
 
     thread = threading.Thread(target=send)
     thread.start()

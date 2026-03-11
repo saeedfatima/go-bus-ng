@@ -112,9 +112,12 @@ Since Render's free tier does not support the interactive shell for `createsuper
 5. Once live, open your frontend URL!
 
 ## Troubleshooting
-* **Backend 500 / CORS Error:** If you see a CORS error in the console, it usually means the backend crashed with a 500 error. Check the **Logs** tab on Render to see the Python error message.
-* **Email Not Sending:** Ensure you are using a **Gmail App Password**, not your regular password.
-* **Database Connection:** Ensure `DATABASE_URL` is correctly copied from your Render PostgreSQL instance.
+* **Backend 500 / CORS Error:** Check the **Logs** tab on Render to see the Python error message.
+* **Email Not Sending:** 
+  1. Check Render logs for `[EMAIL] Success` or `[EMAIL] ERROR`.
+  2. If using Resend, ensure `EMAIL_HOST_PASSWORD` is your API Key (starts with `re_`).
+  3. Note: `onboarding@resend.dev` only sends to *your* email address. To send to others, you must verify your domain in Resend.
+* **Database Connection:** Ensure `DATABASE_URL` is correctly linked to your Render PostgreSQL instance.
 
 ## That's it!
 Your database, backend, and frontend are now live with automated emails for OTPs, password resets, and bus tickets! 🚌💨
