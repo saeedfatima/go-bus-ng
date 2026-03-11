@@ -5,6 +5,7 @@ from django.utils.html import strip_tags
 from django.conf import settings
 import logging
 
+print("[SYSTEM] Email Utility Module Loaded", flush=True)
 logger = logging.getLogger(__name__)
 
 def _send_email_async(subject, plain_message, html_message, recipient_list):

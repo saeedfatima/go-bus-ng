@@ -185,6 +185,7 @@ class PasswordResetView(APIView):
 
         try:
             user = User.objects.get(email=email)
+            print(f"[SYSTEM] Password reset triggered for: {email}", flush=True)
             # Generate a secure token
             uid = urlsafe_base64_encode(force_bytes(user.pk))
             token = default_token_generator.make_token(user)
@@ -193,6 +194,7 @@ class PasswordResetView(APIView):
 
             send_password_reset_email(user, reset_url)
         except User.DoesNotExist:
+            print(f"[SYSTEM] Password reset attempted for non-existent email: {email}", flush=True)
             pass  # Don't reveal if email exists
 
         # Always return success (security best practice)
