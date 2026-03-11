@@ -182,7 +182,7 @@ FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:8080').rstrip('/')
 PAYSTACK_SECRET_KEY = os.getenv('PAYSTACK_SECRET_KEY', '')
 PAYSTACK_WEBHOOK_SECRET = os.getenv('PAYSTACK_WEBHOOK_SECRET', '')
 # Callback URL matches the frontend payment processing page
-PAYSTACK_CALLBACK_URL = os.getenv('PAYSTACK_CALLBACK_URL', f'{FRONTEND_URL}/api/v1/payments/callback')
+PAYSTACK_CALLBACK_URL = os.getenv('PAYSTACK_CALLBACK_URL', f'{FRONTEND_URL}/booking/{{id}}/payment')
 PAYSTACK_MOCK_REDIRECT_URL_TEMPLATE = os.getenv('PAYSTACK_MOCK_REDIRECT_URL_TEMPLATE', f'{FRONTEND_URL}/booking/{{id}}/payment?reference={{reference}}')
 
 # Hybrid fallback for local/dev testing.

@@ -29,7 +29,7 @@ Follow these exact steps to fully deploy both your Django Backend and React Fron
 4. Select **Advanced** -> **Environment Variables** and add:
    * Key: `FRONTEND_URL` | Value: `https://go-bus-ng-frontend.onrender.com`
    * Key: `PAYSTACK_SECRET_KEY` | Value: *(Your Live Secret Key from Paystack Dashboard)*
-   * Key: `PAYSTACK_CALLBACK_URL` | Value: `https://go-bus-ng-frontend.onrender.com/api/v1/payments/callback`
+   * Key: `PAYSTACK_CALLBACK_URL` | Value: `https://go-bus-ng-frontend.onrender.com/booking/{id}/payment`
    * Key: `PAYSTACK_WEBHOOK_SECRET` | Value: *(Your Webhook Secret from Paystack)*
    * Key: `DATABASE_URL` | Value: *(Automatically link your Render PostgreSQL)*
    * Key: `DJANGO_SECRET_KEY` | Value: *(Type a long random string)*
@@ -66,8 +66,9 @@ To ensure bookings are automatically confirmed even if a user closes their brows
 3. Scroll to **Webhooks**.
 4. Set the **Webhook URL** to:
    `https://go-bus-ng-backend.onrender.com/api/v1/payments/webhook/`
-5. Click **Save Changes**.
-6. Copy the **Webhook Secret** (if shown) and paste it into the `PAYSTACK_WEBHOOK_SECRET` variable on Render.
+6. Click **Save Changes**.
+7. Copy the **Webhook Secret** (if shown) and paste it into the `PAYSTACK_WEBHOOK_SECRET` variable on Render.  
+   *(Note: If Paystack doesn't show a secret, don't worry! My code will automatically use your main **Secret Key** as the fallback.)*
 
 ## Step 5: Automate Superadmin Creation (Optional but recommended)
 Since Render's free tier does not support the interactive shell for `createsuperuser`, you can automate this using environment variables.
