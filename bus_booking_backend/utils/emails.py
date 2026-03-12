@@ -13,6 +13,7 @@ def _send_email_async(subject, plain_message, html_message, recipient_list):
     Helper function to send emails in a background thread to prevent blocking
     the main request and causing Gunicorn timeouts.
     """
+    print(f"[EMAIL] Pre-flight: Attempting to send '{subject}' to {recipient_list}", flush=True)
     def send():
         try:
             send_mail(
