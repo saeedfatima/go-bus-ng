@@ -10,11 +10,13 @@ export default defineConfig(({ mode }) => ({
     port: 8080,
   },
   publicDir: "frontend/public",
+  css: {
+    postcss: "./postcss.config.js",
+  },
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./frontend/src"),
     },
   },
-  root: ".",
 }));
