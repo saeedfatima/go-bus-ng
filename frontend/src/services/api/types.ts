@@ -48,6 +48,7 @@ export interface ApiBus {
   totalSeats: number;
   amenities: string[];
   isActive: boolean;
+  company?: ApiCompany;
   createdAt: string;
   updatedAt: string;
 }
