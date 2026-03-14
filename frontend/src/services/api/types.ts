@@ -60,6 +60,7 @@ export interface ApiRoute {
   destinationCityId: string;
   originCity?: ApiCity;
   destinationCity?: ApiCity;
+  company?: ApiCompany;
   basePrice: number;
   durationHours: number;
   isActive: boolean;
