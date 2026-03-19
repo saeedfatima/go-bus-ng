@@ -12,7 +12,10 @@ except ImportError:
 if load_dotenv:
     load_dotenv(BASE_DIR / '.env', override=True)
 
-import dj_database_url
+try:
+    import dj_database_url
+except ImportError:
+    dj_database_url = None
 
 SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'django-insecure-your-dev-secret-key-change-in-production')
 DEBUG = os.getenv('DEBUG', 'True') == 'True'
@@ -103,7 +106,7 @@ AUTH_USER_MODEL = 'accounts.User'
 # - On Render: set DATABASE_URL env var to the PostgreSQL connection string.
 # - Locally:   falls back to a local SQLite file — no env var needed.
 _database_url = os.getenv('DATABASE_URL')
-if _database_url:
+if _database_url and dj_database_url:
     # Render PostgreSQL requires SSL. Enabling conn_health_checks for reliability.
     DATABASES = {
         'default': dj_database_url.config(
@@ -166,17 +169,19 @@ else:
     else:
         print("[SYSTEM] Email Backend: CONSOLE (Fallback)", flush=True)
 
-EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.resend.com') # Default to Resend
+EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.resend.com')
 EMAIL_PORT = int(os.getenv('EMAIL_PORT', 587))
-EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', 'resend') # Resend username is always 'resend'
-EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '') # Your Resend API Key
-EMAIL_USE_SSL = os.getenv('EMAIL_USE_SSL', 'False') == 'True' # Default False for 587
-EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True') == 'True'  # Default True for 587
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', 'resend')
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
+
+# Resend/Gmail recommendation: 587 with STARTTLS. 465 is for implicit SSL.
+EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', str(EMAIL_PORT == 587)).lower() == 'true'
+EMAIL_USE_SSL = os.getenv('EMAIL_USE_SSL', str(EMAIL_PORT == 465)).lower() == 'true'
 DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'onboarding@resend.dev')
 
 # Frontend URL for links (Paystack redirects, email verification, etc.)
 # If not set, it defaults to the local dev server.
-FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:8080').rstrip('/')
+FRONTEND_URL = os.getenv('FRONTEND_URL', 'https://go-bus-ng-frontend.onrender.com/').rstrip('/')
 
 # Paystack configuration
 PAYSTACK_SECRET_KEY = os.getenv('PAYSTACK_SECRET_KEY', '')
@@ -197,5 +202,5 @@ else:
 
 PAYSTACK_MOCK_REDIRECT_URL_TEMPLATE = os.getenv(
     'PAYSTACK_MOCK_REDIRECT_URL_TEMPLATE',
-    'http://localhost:8080/booking/{id}/payment?reference={reference}',
+    'https://go-bus-ng-frontend.onrender.com//booking/{id}/payment?reference={reference}',
 )
