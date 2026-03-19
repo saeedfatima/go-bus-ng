@@ -1,7 +1,6 @@
 from datetime import timedelta
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
-from django.core import mail
 from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -12,35 +11,37 @@ from utils.emails import send_otp_email
 
 class EmailUtilityTests(TestCase):
     @override_settings(
-        EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
-        DEFAULT_FROM_EMAIL='no-reply@example.com',
+        RESEND_API_KEY='re_test_key',
+        DEFAULT_FROM_EMAIL='NaijaBus <onboarding@resend.dev>',
         OTP_EXPIRY_MINUTES=10,
     )
-    def test_send_otp_email_delivers_with_configured_backend(self):
+    @patch('utils.emails.requests.post')
+    def test_send_otp_email_delivers_with_resend_api(self, mock_post):
         user = User.objects.create_user(
             email='email-test@example.com',
             password='password123',
             full_name='Email Test',
         )
         user.otp_code = '123456'
+        mock_post.return_value = Mock(ok=True)
 
         sent = send_otp_email(user)
 
         self.assertTrue(sent)
-        self.assertEqual(len(mail.outbox), 1)
-        self.assertEqual(mail.outbox[0].to, ['email-test@example.com'])
-        self.assertIn('123456', mail.outbox[0].body)
+        mock_post.assert_called_once()
+        request_payload = mock_post.call_args.kwargs['json']
+        self.assertEqual(request_payload['to'], ['email-test@example.com'])
+        self.assertIn('123456', request_payload['text'])
 
     @override_settings(
-        EMAIL_BACKEND='django.core.mail.backends.smtp.EmailBackend',
-        EMAIL_HOST='',
-        DEFAULT_FROM_EMAIL='no-reply@example.com',
+        RESEND_API_KEY='',
+        DEFAULT_FROM_EMAIL='NaijaBus <onboarding@resend.dev>',
     )
-    def test_send_otp_email_returns_false_for_invalid_smtp_settings(self):
+    def test_send_otp_email_returns_false_for_missing_resend_key(self):
         user = User.objects.create_user(
-            email='smtp-test@example.com',
+            email='resend-test@example.com',
             password='password123',
-            full_name='SMTP Test',
+            full_name='Resend Test',
         )
         user.otp_code = '654321'
 

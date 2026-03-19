@@ -1,7 +1,7 @@
 import logging
 
+import requests
 from django.conf import settings
-from django.core.mail import EmailMultiAlternatives, get_connection
 from django.template.loader import render_to_string
 from django.utils.html import strip_tags
 
@@ -16,14 +16,8 @@ def _format_departure_time(value):
 
 
 def _validate_email_settings():
-    if settings.EMAIL_USE_TLS and settings.EMAIL_USE_SSL:
-        return False, 'EMAIL_USE_TLS and EMAIL_USE_SSL cannot both be enabled.'
-
-    if settings.EMAIL_BACKEND != 'django.core.mail.backends.smtp.EmailBackend':
-        return True, ''
-
-    if not getattr(settings, 'EMAIL_HOST', ''):
-        return False, 'EMAIL_HOST is not configured.'
+    if not getattr(settings, 'RESEND_API_KEY', ''):
+        return False, 'RESEND_API_KEY is not configured.'
 
     if not getattr(settings, 'DEFAULT_FROM_EMAIL', ''):
         return False, 'DEFAULT_FROM_EMAIL is not configured.'
@@ -37,49 +31,54 @@ def _send_email(subject, plain_message, html_message, recipient_list):
         logger.error("Email configuration error: %s", validation_error)
         return False
 
+    payload = {
+        'from': settings.DEFAULT_FROM_EMAIL,
+        'to': recipient_list,
+        'subject': subject,
+        'html': html_message,
+        'text': plain_message,
+    }
+    if getattr(settings, 'RESEND_REPLY_TO', ''):
+        payload['reply_to'] = settings.RESEND_REPLY_TO
+
+    headers = {
+        'Authorization': f"Bearer {settings.RESEND_API_KEY}",
+        'Content-Type': 'application/json',
+    }
+
     logger.info(
-        "Sending email '%s' to %s via %s:%s",
+        "Sending email '%s' to %s via Resend API",
         subject,
         recipient_list,
-        getattr(settings, 'EMAIL_HOST', 'console') or 'console',
-        getattr(settings, 'EMAIL_PORT', ''),
     )
-
-    connection = get_connection(fail_silently=False)
-    message = EmailMultiAlternatives(
-        subject=subject,
-        body=plain_message,
-        from_email=settings.DEFAULT_FROM_EMAIL,
-        to=recipient_list,
-        connection=connection,
-    )
-
-    if html_message:
-        message.attach_alternative(html_message, 'text/html')
 
     try:
-        sent_count = message.send(fail_silently=False)
-        if sent_count < 1:
-            logger.error(
-                "Email send incomplete for %s. Sent count: %s",
-                recipient_list,
-                sent_count,
-            )
-            return False
-        return True
-    except Exception:
-        logger.exception(
-            "Failed to send email to %s using %s:%s",
-            recipient_list,
-            getattr(settings, 'EMAIL_HOST', 'console') or 'console',
-            getattr(settings, 'EMAIL_PORT', ''),
+        response = requests.post(
+            settings.RESEND_API_URL,
+            headers=headers,
+            json=payload,
+            timeout=getattr(settings, 'RESEND_REQUEST_TIMEOUT', 20),
         )
+    except requests.RequestException:
+        logger.exception("Failed to reach Resend API for %s", recipient_list)
         return False
-    finally:
-        try:
-            connection.close()
-        except Exception:
-            logger.debug("SMTP connection close failed", exc_info=True)
+
+    if response.ok:
+        logger.info("Resend accepted email for %s", recipient_list)
+        return True
+
+    try:
+        error_payload = response.json()
+    except ValueError:
+        error_payload = {'message': response.text}
+
+    logger.error(
+        "Resend API rejected email to %s. Status: %s. Response: %s",
+        recipient_list,
+        response.status_code,
+        error_payload,
+    )
+    return False
 
 
 def send_ticket_email(booking):

@@ -152,31 +152,17 @@ MEDIA_ROOT = BASE_DIR / 'media'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# Email configuration
-# Production: configure standard SMTP variables in Render.
-# Development: falls back to console email when SMTP is not configured.
-_configured_email_backend = os.getenv('EMAIL_BACKEND')
-if _configured_email_backend:
-    EMAIL_BACKEND = _configured_email_backend
-elif os.getenv('EMAIL_HOST') and os.getenv('EMAIL_HOST_PASSWORD'):
-    EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-else:
-    EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
-
-EMAIL_HOST = os.getenv('EMAIL_HOST', '')
-EMAIL_PORT = int(os.getenv('EMAIL_PORT', 587))
-EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
-EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
-EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', str(EMAIL_PORT == 587)).lower() == 'true'
-EMAIL_USE_SSL = os.getenv('EMAIL_USE_SSL', str(EMAIL_PORT == 465)).lower() == 'true'
-EMAIL_TIMEOUT = int(os.getenv('EMAIL_TIMEOUT', 20))
-EMAIL_SSL_CERTFILE = os.getenv('EMAIL_SSL_CERTFILE') or None
-EMAIL_SSL_KEYFILE = os.getenv('EMAIL_SSL_KEYFILE') or None
-DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL') or EMAIL_HOST_USER or 'no-reply@localhost'
+# Email configuration via Resend HTTP API
+RESEND_API_URL = os.getenv('RESEND_API_URL', 'https://api.resend.com/emails')
+RESEND_API_KEY = os.getenv('RESEND_API_KEY', '')
+RESEND_REQUEST_TIMEOUT = int(os.getenv('RESEND_REQUEST_TIMEOUT', 20))
+RESEND_FROM_EMAIL = os.getenv('RESEND_FROM_EMAIL', 'NaijaBus <onboarding@resend.dev>')
+RESEND_REPLY_TO = os.getenv('RESEND_REPLY_TO', '')
+DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL') or RESEND_FROM_EMAIL
 SERVER_EMAIL = os.getenv('SERVER_EMAIL', DEFAULT_FROM_EMAIL)
 
 print(
-    f"[SYSTEM] Email Backend: {EMAIL_BACKEND} | Host: {EMAIL_HOST or 'console'}:{EMAIL_PORT}",
+    f"[SYSTEM] Email Provider: Resend API | Sender: {DEFAULT_FROM_EMAIL}",
     flush=True,
 )
 

@@ -151,7 +151,7 @@ External Integrations
 
 Payment Gateway API
 
-Email Notification Service (Brevo SMTP recommended)
+Email Notification Service (Resend API recommended on free Render)
 
 
 
@@ -186,12 +186,9 @@ Create a .env file and configure the following variables:
 DATABASE_URL=
 SECRET_KEY=
 PAYMENT_API_KEY=
-EMAIL_HOST=smtp-relay.brevo.com
-EMAIL_PORT=587
-EMAIL_HOST_USER=
-EMAIL_HOST_PASSWORD=
-EMAIL_USE_TLS=True
-EMAIL_USE_SSL=False
+RESEND_API_KEY=
+RESEND_API_URL=https://api.resend.com/emails
+RESEND_FROM_EMAIL=NaijaBus <onboarding@resend.dev>
 DEFAULT_FROM_EMAIL=
 
 
