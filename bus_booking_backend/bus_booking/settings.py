@@ -153,31 +153,37 @@ MEDIA_ROOT = BASE_DIR / 'media'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # Email configuration
-# Locally: prints to console (no setup needed).
-# Email configuration
-# Locally: prints to console (no setup needed).
-# On Render: Use Gmail or Resend (recommended).
-EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
-if os.getenv('EMAIL_HOST_PASSWORD'):
+# Production: configure standard SMTP variables in Render.
+# Development: falls back to console email when SMTP is not configured.
+_configured_email_backend = os.getenv('EMAIL_BACKEND')
+if _configured_email_backend:
+    EMAIL_BACKEND = _configured_email_backend
+elif os.getenv('EMAIL_HOST') and os.getenv('EMAIL_HOST_PASSWORD'):
     EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-    print("[SYSTEM] Email Backend: SMTP (Engaged)", flush=True)
 else:
-    # Optional logic to also allow EMAIL_HOST_USER for backward compatibility
-    if os.getenv('EMAIL_HOST_USER'):
-        EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-        print("[SYSTEM] Email Backend: SMTP (Engaged via User)", flush=True)
-    else:
-        print("[SYSTEM] Email Backend: CONSOLE (Fallback)", flush=True)
+    EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 
-EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.resend.com')
+EMAIL_HOST = os.getenv('EMAIL_HOST', '')
 EMAIL_PORT = int(os.getenv('EMAIL_PORT', 587))
-EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', 'resend')
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
-
-# Resend/Gmail recommendation: 587 with STARTTLS. 465 is for implicit SSL.
 EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', str(EMAIL_PORT == 587)).lower() == 'true'
 EMAIL_USE_SSL = os.getenv('EMAIL_USE_SSL', str(EMAIL_PORT == 465)).lower() == 'true'
-DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'onboarding@resend.dev')
+EMAIL_TIMEOUT = int(os.getenv('EMAIL_TIMEOUT', 20))
+EMAIL_SSL_CERTFILE = os.getenv('EMAIL_SSL_CERTFILE') or None
+EMAIL_SSL_KEYFILE = os.getenv('EMAIL_SSL_KEYFILE') or None
+DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL') or EMAIL_HOST_USER or 'no-reply@localhost'
+SERVER_EMAIL = os.getenv('SERVER_EMAIL', DEFAULT_FROM_EMAIL)
+
+print(
+    f"[SYSTEM] Email Backend: {EMAIL_BACKEND} | Host: {EMAIL_HOST or 'console'}:{EMAIL_PORT}",
+    flush=True,
+)
+
+# OTP configuration
+OTP_EXPIRY_MINUTES = int(os.getenv('OTP_EXPIRY_MINUTES', 10))
+OTP_RESEND_COOLDOWN_SECONDS = int(os.getenv('OTP_RESEND_COOLDOWN_SECONDS', 60))
+OTP_MAX_FAILED_ATTEMPTS = int(os.getenv('OTP_MAX_FAILED_ATTEMPTS', 5))
 
 # Frontend URL for links (Paystack redirects, email verification, etc.)
 # If not set, it defaults to the local dev server.

@@ -36,28 +36,45 @@ Follow these exact steps to fully deploy both your Django Backend and React Fron
    * Key: `DEBUG` | Value: `False`
    * Key: `ALLOWED_HOSTS` | Value: `*`
    * Key: `CORS_ALLOW_ALL_ORIGINS` | Value: `True`
-   * Key: `EMAIL_HOST_PASSWORD` | Value: *(Your Resend API Key)*
+   * Key: `EMAIL_HOST` | Value: `smtp-relay.brevo.com`
+   * Key: `EMAIL_PORT` | Value: `587`
+   * Key: `EMAIL_HOST_USER` | Value: *(Your Brevo SMTP login)*
+   * Key: `EMAIL_HOST_PASSWORD` | Value: *(Your Brevo SMTP key)*
+   * Key: `EMAIL_USE_TLS` | Value: `True`
+   * Key: `EMAIL_USE_SSL` | Value: `False`
+   * Key: `EMAIL_TIMEOUT` | Value: `20`
+   * Key: `DEFAULT_FROM_EMAIL` | Value: *(A sender address you verified in Brevo, e.g. `noreply@yourdomain.com`)*
+   * Key: `OTP_RESEND_COOLDOWN_SECONDS` | Value: `60`
+   * Key: `OTP_EXPIRY_MINUTES` | Value: `10`
+   * Key: `OTP_MAX_FAILED_ATTEMPTS` | Value: `5`
 6. Click **Create Web Service**.
 7. Render will now build your app. This might take 3-5 minutes.
 
 ---
 
-### Step 7: Resend Setup (Testing Mode - No Domain)
-If you do not have a custom domain, you can still test your project using Resend's **Testing Mode**.
+### Step 7: Brevo SMTP Setup
+Use Brevo for transactional email on Render. It is a better fit than Resend for this project because it gives you a normal SMTP relay, verified senders, and straightforward transactional delivery.
 
-1. Go to [Resend.com](https://resend.com) and sign up with your **Gmail address**.
-2. Go to **API Keys** and create a new key.
-3. In your **Render Dashboard -> Environment**, add/update these variables:
-   * Key: `EMAIL_HOST` | Value: `smtp.resend.com`
+1. Create a Brevo account at `https://www.brevo.com/`.
+2. Verify your account email and complete any initial business/profile checks Brevo asks for.
+3. In Brevo, go to `Settings` -> `Senders, Domains & Dedicated IPs`.
+4. Add and verify a sender email, or authenticate your domain if you want better deliverability.
+5. Go to `SMTP & API` and generate an SMTP key.
+6. In your **Render Dashboard -> Environment**, add/update these variables:
+   * Key: `EMAIL_HOST` | Value: `smtp-relay.brevo.com`
    * Key: `EMAIL_PORT` | Value: `587`
-   * Key: `EMAIL_HOST_USER` | Value: `resend`
-   * Key: `EMAIL_HOST_PASSWORD` | Value: *(Your Resend API Key starting with re_)*
+   * Key: `EMAIL_HOST_USER` | Value: *(Your Brevo SMTP login)*
+   * Key: `EMAIL_HOST_PASSWORD` | Value: *(Your Brevo SMTP key)*
    * Key: `EMAIL_USE_TLS` | Value: `True`
-   * Key: `DEFAULT_FROM_EMAIL` | Value: `onboarding@resend.dev`
+   * Key: `EMAIL_USE_SSL` | Value: `False`
+   * Key: `EMAIL_TIMEOUT` | Value: `20`
+   * Key: `DEFAULT_FROM_EMAIL` | Value: *(The same sender email you verified in Brevo)*
 
 > [!IMPORTANT]
-> **CRITICAL RESTRICTION:** In Testing Mode, Resend will **ONLY** deliver emails to the email address you used to sign up for Resend. 
-> To test your OTP and Tickets, you **MUST** register your users using that same email address. Emails sent to any other address will be accepted by the server but **never delivered**.
+> Use port `587` with `EMAIL_USE_TLS=True` on Render. Avoid implicit SSL on `465` unless Brevo explicitly tells you to use it for your account and you have tested it from Render.
+
+> [!IMPORTANT]
+> `DEFAULT_FROM_EMAIL` must match a sender email or domain you have verified in Brevo. If the sender is not verified, OTP, booking confirmation, and ticket emails may fail even when OTP generation is working.
 
 ### Step 8: Fix "Not Found" (404) Errors on Refresh/Redirect
 Since this is a Single Page Application (SPA), Render needs to be told to redirect all paths to `index.html`.
@@ -116,9 +133,10 @@ Since Render's free tier does not support the interactive shell for `createsuper
 ## Troubleshooting
 * **Backend 500 / CORS Error:** Check the **Logs** tab on Render to see the Python error message.
 * **Email Not Sending:** 
-  1. Check Render logs for `[EMAIL] Success` or `[EMAIL] ERROR`.
-  2. If using Resend, ensure `EMAIL_HOST_PASSWORD` is your API Key (starts with `re_`).
-  3. Note: `onboarding@resend.dev` only sends to *your* email address. To send to others, you must verify your domain in Resend.
+  1. Check Render logs for the SMTP host and timeout error details.
+  2. For Brevo, use `EMAIL_HOST=smtp-relay.brevo.com`, `EMAIL_PORT=587`, `EMAIL_USE_TLS=True`, and `EMAIL_USE_SSL=False`.
+  3. Ensure `DEFAULT_FROM_EMAIL` matches an address or domain you verified in Brevo.
+  4. If a resend endpoint returns `429`, wait for the cooldown to expire before requesting another OTP.
 * **Database Connection:** Ensure `DATABASE_URL` is correctly linked to your Render PostgreSQL instance.
 
 ## That's it!

@@ -4,31 +4,15 @@ from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
-from django.utils import timezone
 from django.utils.http import urlsafe_base64_encode
 from django.utils.encoding import force_bytes
 from django.conf import settings as django_settings
-from datetime import timedelta
-import random
 
 from .models import User, UserRole, AppRole
 from .serializers import RegisterSerializer, LoginSerializer, UserSerializer, UserRoleSerializer
+from .otp_service import send_user_otp, verify_user_otp
 from utils.permissions import IsAdmin
-from utils.emails import send_otp_email, send_password_reset_email, send_ticket_email
-
-def generate_and_send_otp(user):
-    otp = str(random.randint(100000, 999999))
-    user.otp_code = otp
-    user.otp_expires_at = timezone.now() + timedelta(minutes=10)
-    user.save()
-
-    # Always log to console for debugging
-    print(f"\n{'='*50}", flush=True)
-    print(f"OTP for {user.email}: {user.otp_code}", flush=True)
-    print(f"{'='*50}\n", flush=True)
-
-    # Send actual email using utility
-    send_otp_email(user)
+from utils.emails import send_password_reset_email
 
 
 class RegisterView(APIView):
@@ -44,15 +28,24 @@ class RegisterView(APIView):
         if serializer.is_valid():
             user = serializer.save()
             user.is_email_verified = False
-            user.save()
-            
-            generate_and_send_otp(user)
-            
-            return Response({
+            user.save(update_fields=['is_email_verified', 'updated_at'])
+
+            otp_result = send_user_otp(
+                user,
+                respect_cooldown=False,
+                reuse_existing_code=False,
+            )
+
+            response_data = {
                 'message': 'Registration successful. Please verify OTP.',
                 'otp_required': True,
-                'email': user.email
-            }, status=status.HTTP_201_CREATED)
+                'email': user.email,
+                'email_sent': otp_result.ok,
+            }
+            if not otp_result.ok:
+                response_data['delivery_error'] = otp_result.detail
+
+            return Response(response_data, status=status.HTTP_201_CREATED)
         print(f"[REGISTER] Validation errors: {serializer.errors}", flush=True)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -70,13 +63,21 @@ class LoginView(APIView):
             
             # Check if verified
             if not user.is_email_verified:
-                generate_and_send_otp(user)
-                return Response({
+                otp_result = send_user_otp(
+                    user,
+                    respect_cooldown=False,
+                    reuse_existing_code=True,
+                )
+                response_data = {
                     'message': 'Verification required.',
                     'otp_required': True,
                     'email': user.email,
-                    'full_name': user.full_name
-                })
+                    'full_name': user.full_name,
+                    'email_sent': otp_result.ok,
+                }
+                if not otp_result.ok:
+                    response_data['delivery_error'] = otp_result.detail
+                return Response(response_data)
             
             refresh = RefreshToken.for_user(user)
             return Response({
@@ -102,18 +103,11 @@ class VerifyOtpView(APIView):
             
         try:
             user = User.objects.get(email=email)
-            
-            if user.otp_code != otp_code:
-                return Response({'error': 'Invalid OTP'}, status=status.HTTP_400_BAD_REQUEST)
-                
-            if user.otp_expires_at and user.otp_expires_at < timezone.now():
-                return Response({'error': 'OTP expired'}, status=status.HTTP_400_BAD_REQUEST)
-                
-            # OTP Verified
-            user.is_email_verified = True
-            user.otp_code = None
-            user.otp_expires_at = None
-            user.save()
+
+            verification_result = verify_user_otp(user, otp_code)
+            if not verification_result.ok:
+                status_code = status.HTTP_429_TOO_MANY_REQUESTS if 'Too many' in verification_result.detail else status.HTTP_400_BAD_REQUEST
+                return Response({'error': verification_result.detail}, status=status_code)
             
             refresh = RefreshToken.for_user(user)
             return Response({
@@ -139,8 +133,24 @@ class ResendOtpView(APIView):
             
         try:
             user = User.objects.get(email=email)
-            generate_and_send_otp(user)
-            return Response({'message': 'OTP resent'})
+            otp_result = send_user_otp(
+                user,
+                respect_cooldown=True,
+                reuse_existing_code=True,
+            )
+            if otp_result.ok:
+                return Response({'message': 'OTP resent'})
+
+            payload = {'error': otp_result.detail}
+            if otp_result.retry_after:
+                payload['retry_after'] = otp_result.retry_after
+                return Response(payload, status=status.HTTP_429_TOO_MANY_REQUESTS)
+            response_status = (
+                status.HTTP_400_BAD_REQUEST
+                if user.is_email_verified
+                else status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+            return Response(payload, status=response_status)
         except User.DoesNotExist:
             return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
 
@@ -192,7 +202,11 @@ class PasswordResetView(APIView):
             # Build the reset URL pointing to the frontend
             reset_url = f"{django_settings.FRONTEND_URL}/reset-password?uid={uid}&token={token}"
 
-            send_password_reset_email(user, reset_url)
+            if not send_password_reset_email(user, reset_url):
+                return Response(
+                    {'error': 'Failed to send password reset email. Check SMTP settings.'},
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE,
+                )
         except User.DoesNotExist:
             print(f"[SYSTEM] Password reset attempted for non-existent email: {email}", flush=True)
             pass  # Don't reveal if email exists
@@ -236,8 +250,24 @@ class ResendVerificationView(APIView):
         # Reuse OTP logic
         try:
             user = User.objects.get(email=email)
-            generate_and_send_otp(user)
-            return Response({'message': 'Verification email sent'})
+            otp_result = send_user_otp(
+                user,
+                respect_cooldown=True,
+                reuse_existing_code=True,
+            )
+            if otp_result.ok:
+                return Response({'message': 'Verification email sent'})
+
+            payload = {'error': otp_result.detail}
+            if otp_result.retry_after:
+                payload['retry_after'] = otp_result.retry_after
+                return Response(payload, status=status.HTTP_429_TOO_MANY_REQUESTS)
+            response_status = (
+                status.HTTP_400_BAD_REQUEST
+                if user.is_email_verified
+                else status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+            return Response(payload, status=response_status)
         except User.DoesNotExist:
             return Response({'message': 'Verification email sent'})
 
