@@ -1,12 +1,11 @@
-🚍 NaijaBus – Online Bus Ticket Booking Platform
+# 🚍 NaijaBus
 
-NaijaBus is an open-source web platform designed to modernize inter-state bus transportation in Nigeria.
+A scalable bus booking and transport management platform built with Django and React.
 
-The system enables passengers to search and book trips online while allowing transport companies to manage routes, buses, schedules, and bookings through a centralized management dashboard.
-
-The project aims to help transport operators transition from manual ticketing systems to scalable digital booking infrastructure.
-
-
+![Status](https://img.shields.io/badge/status-active-success)
+![Backend](https://img.shields.io/badge/backend-Django-green)
+![Frontend](https://img.shields.io/badge/frontend-React-blue)
+![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
 ✨ Key Features
 
