@@ -7,244 +7,119 @@ A scalable bus booking and transport management platform built with Django and R
 ![Frontend](https://img.shields.io/badge/frontend-React-blue)
 ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
-✨ Key Features
 
-Passenger Portal
+/docs/images/
 
-Search trips by origin, destination, and date
+## 📸 Screenshots
 
-View available buses and schedules
+### Passenger Booking Interface
+![Booking UI](docs/images/booking.png)
 
-Select seats and book tickets
+### Admin Dashboard
+![Dashboard](docs/images/dashboard.png)
 
-Secure online payment processing
+## 🎥 Demo
 
-Receive electronic ticket confirmation
+Watch demo here: https://go-bus-ng-frontend.onrender.com
 
-Access booking history
+## ✨ Features
 
+### 👤 Passenger
+- Search trips by route and date
+- Book seats with real-time availability
+- Secure payment integration
+- Booking history tracking
 
-Transport Company Dashboard
+### 🏢 Transport Companies
+- Manage buses and routes
+- Schedule trips
+- Track revenue and bookings
 
-Register and manage transport companies
+### ⚙️ Admin
+- User management
+- Company verification
+- System analytics
 
-Manage buses and seating capacity
+  ## 🏗️ Architecture
+docs/images/architecture.png
 
-Create and update routes
+## 🧠 System Design
 
-Schedule trips
+- Multi-tenant architecture (multiple transport companies)
+- RESTful API design
+- Modular Django app structure
+- Booking lifecycle management
 
-Monitor bookings and revenue
+  ## 🗄️ Database Schema
 
+Core Entities:
+- Users
+- Companies
+- Buses
+- Routes
+- Trips
+- Bookings
 
-Platform Administration
+![Database](docs/images/db-schema.png)
 
-Manage users and roles
+## 🛠 Tech Stack
 
-Verify registered companies
+**Frontend**
+- React (Vite)
+- Tailwind CSS
 
-Monitor platform activity
+**Backend**
+- Django REST Framework
 
-View system analytics and reports
+**Database**
+- PostgreSQL
 
+**Integrations**
+- Payment Gateway API
+- Resend Email API
 
+## 🚀 Getting Started
 
+### Clone repo
+```bash
+git clone https://github.com/yourusername/naijabus.git
+cd naijabus
 
-🎯 Project Goals
-
-NaijaBus aims to:
-
-Digitize traditional bus ticketing systems
-
-Reduce booking conflicts and manual errors
-
-Enable secure and transparent booking processes
-
-Support multiple transport companies within a single platform
-
-Provide a scalable infrastructure for transportation technology in developing regions
-
-
-
-🏗 System Architecture
-
-The platform follows a layered architecture:
-
-Client Layer
-User interface and passenger interaction
-
-Backend Layer
-Application logic and REST API services
-
-Database Layer
-Persistent storage of operational data
-
-External Services
-Payment gateways and notification services
-
-System design includes:
-
-Use Case Diagrams
-
-Data Flow Diagrams (DFD Level 0 & Level 1)
-
-Database Schema Modeling
-
-
-
-
-🗄 Database Entities
-
-Core system entities include:
-
-Users
-
-Companies
-
-Buses
-
-Routes
-
-Trips
-
-Bookings
-
-Passengers
-
-Cities
-
-
-These entities support route scheduling, passenger booking, and transport company management.
-
-
-
-
-🛠 Technology Stack
-
-Frontend
-
-React.js
-
-Tailwind CSS
-
-JavaScript
-
-
-Backend
-
-Django / Node.js
-
-REST API architecture
-
-
-Database
-
-PostgreSQL
-
-MySQL
-
-SQLite
-
-
-External Integrations
-
-Payment Gateway API
-
-Email Notification Service (Resend API recommended on free Render)
-
-
-
-
-
-⚙ Installation
-
-1. Clone Repository
-
-git clone https://github.com/saeedfatima/go-bus-ng.git
-cd go-bus-ng
-
-2. Install Dependencies
-
-Frontend
-
+cd frontend
 npm install
 npm run dev
 
-Backend
 
-pip install -r requirements.txt
-python manage.py runserver
+---
 
+### 🔐 Environment Variables
 
+```markdown
+## 🔐 Environment Variables
 
-
-🔑 Environment Configuration
-
-Create a .env file and configure the following variables:
-
+Create a `.env` file:
 DATABASE_URL=
 SECRET_KEY=
-PAYMENT_API_KEY=
 RESEND_API_KEY=
-RESEND_API_URL=https://api.resend.com/emails
-RESEND_FROM_EMAIL=NaijaBus <onboarding@resend.dev>
-DEFAULT_FROM_EMAIL=
+PAYMENT_API_KEY=
 
+## 📊 Project Status
 
+| Feature | Status |
+|--------|--------|
+| Authentication | ✅ Done |
+| Booking System | ✅ Done |
+| Payment Integration | ✅ Done |
+| Seat Locking | ✅ Done |
 
+## 🧭 Roadmap
 
-📊 Future Improvements
+- [ ] Real-time seat locking
+- [ ] Mobile app integration
+- [ ] QR ticket validation
+- [ ] AI-based trip demand prediction
 
-Planned improvements include:
+## 👨‍💻 Author
 
-Mobile application integration
-
-Real-time seat locking mechanism
-
-QR-based ticket validation
-
-Automated refund processing
-
-AI-based demand forecasting for trip planning
-
-Multi-transport company network support
-
-
-
-
-
-🤝 Contributing
-
-Contributions are welcome.
-
-To contribute:
-
-1. Fork the repository
-
-
-2. Create a new feature branch
-
-
-3. Commit your changes
-
-
-4. Submit a pull request
-
-
-
-Bug reports, feature requests, and documentation improvements are encouraged.
-
-
-
-
-📄 License
-
-This project is open-source and available under the MIT License.
-
-
-
-👨‍💻 Maintainer
-
-Saidu Usman Abdullahi
-
-Developer focused on building open digital infrastructure for transportation, logistics, and enterprise systems in emerging markets.
+Saidu Usman Abdullahi  
+Backend & Fullstack Developer  
